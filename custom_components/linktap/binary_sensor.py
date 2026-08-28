@@ -9,9 +9,11 @@ import voluptuous as vol
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers import entity_platform, service
 from homeassistant.helpers.entity import *
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
-                                                      DataUpdateCoordinator)
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 from homeassistant.util import slugify
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,7 +50,16 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
     # Modern HA naming: entity name is relative to the device name.
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, name=False, device_class=False, icon=False):
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        hass,
+        tap,
+        data_attribute,
+        name=False,
+        device_class=False,
+        icon=False,
+    ):
         super().__init__(coordinator)
         self._state = None
         if not name:
@@ -59,21 +70,37 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self.tap_name = tap[NAME]
         self.tap_api = coordinator.tap_api
         self.platform = "binary_sensor"
+
         # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
-        self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{data_attribute}_{self.tap_id}")
+        self._attr_unique_id = slugify(
+            f"{DOMAIN}_{self.platform}_{data_attribute}_{self.tap_id}"
+        )
+
+        # LinkTap fault/alarm flags are diagnostic information rather than
+        # ordinary operating status. Mark them DIAGNOSTIC so Home Assistant
+        # groups them accordingly while keeping them available to dashboards,
+        # automations and alert handling.
+        if data_attribute in {
+            "is_fall",
+            "is_cutoff",
+            "is_leak",
+            "is_clog",
+            "is_broken",
+        }:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
         if device_class:
             self._attr_device_class = device_class
         if icon:
             self._attr_icon = icon
+
         self._attrs = {}
         self._attr_device_info = DeviceInfo(
-            identifiers={
-                (DOMAIN, tap[TAP_ID])
-            },
+            identifiers={(DOMAIN, tap[TAP_ID])},
             name=tap[NAME],
             manufacturer=MANUFACTURER,
             model=tap[TAP_ID],
-            configuration_url="http://" + tap[GW_IP] + "/"
+            configuration_url="http://" + tap[GW_IP] + "/",
         )
 
     @property
@@ -101,7 +128,9 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     async def _dismiss_alerts(self):
         _LOGGER.debug(f"Dismissing all alerts for {self.entity_id}")
-        await self.tap_api.dismiss_alert(self.coordinator.get_gw_id(), self.tap_id)
+        await self.tap_api.dismiss_alert(
+            self.coordinator.get_gw_id(), self.tap_id
+        )
 
     """alert: type of alert
     0: all types of alert.
@@ -113,11 +142,15 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """
     async def _dismiss_alert(self):
         split_name = self._data_check_attribute.split("_")
-        alert_type = split_name[len(split_name)-1]
+        alert_type = split_name[len(split_name) - 1]
         alert_id = self.alert_lookup(alert_type)
         if alert_id is not None:
-            _LOGGER.debug(f"Dismissing {alert_type} alert for {self.entity_id}")
-            await self.tap_api.dismiss_alert(self.coordinator.get_gw_id(), self.tap_id)
+            _LOGGER.debug(
+                f"Dismissing {alert_type} alert for {self.entity_id}"
+            )
+            await self.tap_api.dismiss_alert(
+                self.coordinator.get_gw_id(), self.tap_id
+            )
         else:
             _LOGGER.debug("No matching alert found. Do nothing")
 
@@ -128,7 +161,7 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "shutdown": 2,
             "cutoff": 3,
             "high_flow": 4,
-            "low_flow": 5
+            "low_flow": 5,
         }
         if alert_name in alerts:
             return alerts[alert_name]
