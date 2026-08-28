@@ -9,7 +9,7 @@ import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.number import DOMAIN as NUMBER_DOMAIN
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import STATE_UNKNOWN
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import service
@@ -123,9 +123,9 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
             )
             duration = DEFAULT_TIME
             self._attrs[ATTR_DEFAULT_TIME] = True
-        elif entity.state == STATE_UNKNOWN:
+        elif entity.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             _LOGGER.debug(
-                f"Entity {entity_id} state unknown -- setting default"
+                f"Entity {entity_id} state {entity.state} -- setting default"
             )
             duration = DEFAULT_TIME
             self._attrs[ATTR_DEFAULT_TIME] = True
@@ -144,10 +144,10 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
                 "Watering volume entity could not be resolved -- setting default"
             )
             self._attrs[ATTR_VOL] = False
-        elif entity.state == STATE_UNKNOWN:
+        elif entity.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             volume = DEFAULT_VOL
             _LOGGER.debug(
-                f"Entity {entity_id} state unknown -- setting default"
+                f"Entity {entity_id} state {entity.state} -- setting default"
             )
             self._attrs[ATTR_VOL] = False
         elif int(float(entity.state)) == 0:
@@ -250,7 +250,7 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
         entity_id = self.pause_duration_entity
         _LOGGER.debug(f"PauseSwitch: Looking for {entity_id}")
         entity = self.hass.states.get(entity_id) if entity_id else None
-        if entity and entity.state not in (None, "unknown"):
+        if entity and entity.state not in (None, STATE_UNKNOWN, STATE_UNAVAILABLE):
             _LOGGER.debug(
                 f"PauseSwitch: Found pause duration entity {entity_id} "
                 f"with state {entity.state}"
