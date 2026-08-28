@@ -10,8 +10,9 @@ import voluptuous as vol
 from homeassistant.components.number import DOMAIN as NUMBER_DOMAIN
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import STATE_UNKNOWN
-from homeassistant.helpers import entity_platform, service
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import service
 from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
