@@ -23,12 +23,12 @@ async def async_setup_entry(
     taps = hass.data[DOMAIN][config.entry_id]["conf"]["taps"]
     numbers = []
     for tap in taps:
-        """For each tap, we set a number for duration, volume, and pause duration"""
+        """For each tap, we set a number for duration, volume, and water-plan pause duration"""
         _LOGGER.debug(f"Configuring numbers for tap {tap}")
         coordinator = tap["coordinator"]
         numbers.append(LinktapNumber(coordinator, hass, tap, "Watering duration", "mdi:clock", "m"))
         numbers.append(LinktapNumber(coordinator, hass, tap, "Watering volume", "mdi:water", hass.data[DOMAIN][config.entry_id]["conf"]["vol_unit"]))
-        numbers.append(LinktapPauseDurationNumber(coordinator, hass, tap, "Pause duration", "mdi:timer-pause", "h"))
+        numbers.append(LinktapPauseDurationNumber(coordinator, hass, tap, "Pause Duration Water Plan", "mdi:timer-pause", "h"))
 
     async_add_entities(numbers, True)
 
@@ -111,8 +111,14 @@ class LinktapPauseDurationNumber(CoordinatorEntity, RestoreNumber):
         self._name = tap[NAME]
         self.tap_id = tap[TAP_ID]
         self.platform = "number"
-        # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
-        self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}_pause_duration")
+
+        # IMPORTANT: unique_id is intentionally unchanged. Although the displayed
+        # name is now "Pause Duration Water Plan", registry/history must remain
+        # tied to the existing pause_duration entity.
+        self._attr_unique_id = slugify(
+            f"{DOMAIN}_{self.platform}_{self.tap_id}_pause_duration"
+        )
+
         self._attr_name = number_suffix
         self._attr_native_min_value = 1
         self._attr_native_max_value = 240
