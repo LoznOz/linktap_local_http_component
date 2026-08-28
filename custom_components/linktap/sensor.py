@@ -132,6 +132,20 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
         else:
             if self.attribute == "plan_mode_string":
                 self._state = self.translate_plan_mode(attributes["plan_mode"])
+            elif self.attribute == "remain_duration":
+                # LinkTap can retain the final remaining-duration value after a
+                # watering session is stopped. In Home Assistant, a remaining
+                # duration is semantically zero when watering is no longer active.
+                #
+                # Preserve the reported remaining duration while paused so a
+                # paused watering session can still show how much time remains.
+                is_watering = bool(attributes.get("is_watering", False))
+                is_paused = bool(attributes.get("is_paused", False))
+                self._state = (
+                    attributes[self.attribute]
+                    if is_watering or is_paused
+                    else 0
+                )
             else:
                 self._state = attributes[self.attribute]
 
