@@ -7,7 +7,12 @@ import aiohttp
 import homeassistant.helpers.config_validation as cv
 import homeassistant.util.dt as dt_util
 import voluptuous as vol
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfVolumeFlowRate
 from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -26,6 +31,15 @@ async def async_setup_entry(
     """Setup the sensor platform."""
     taps = hass.data[DOMAIN][config.entry_id]["conf"]["taps"]
     vol_unit = hass.data[DOMAIN][config.entry_id]["conf"]["vol_unit"]
+
+    # Home Assistant requires canonical volume-flow units for the
+    # VOLUME_FLOW_RATE device class and long-term statistics.
+    # LinkTap reports the configured volume unit as L or Gal.
+    flow_unit = (
+        UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+        if str(vol_unit).lower() == "l"
+        else UnitOfVolumeFlowRate.GALLONS_PER_MINUTE
+    )
     sensors = []
     for tap in taps:
         _LOGGER.debug(f"Configuring sensors for tap {tap}")
@@ -35,7 +49,17 @@ async def async_setup_entry(
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="total_duration", unit="s", icon="mdi:clock"))
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="remain_duration", unit="s", icon="mdi:clock"))
         sensors.append(LinktapWateringTimeTotalSensor(coordinator, hass, tap))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="speed", unit=f"{vol_unit}pm", icon="mdi:speedometer"))
+        sensors.append(
+            LinktapSensor(
+                coordinator,
+                hass,
+                tap,
+                data_attribute="speed",
+                unit=flow_unit,
+                device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
+                icon="mdi:speedometer",
+            )
+        )
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume", unit=vol_unit, device_class="water", icon="mdi:water-percent"))
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume_limit", unit=vol_unit, icon="mdi:water-percent"))
         sensors.append(LinktapVolumeTotalSensor(coordinator, hass, tap, unit=vol_unit))
@@ -68,7 +92,10 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
             self._attr_icon = icon
         if device_class:
             self._attr_device_class = device_class
-            if device_class == "water":
+            if device_class in (
+                "water",
+                SensorDeviceClass.VOLUME_FLOW_RATE,
+            ):
                 self._attr_state_class = SensorStateClass.MEASUREMENT
 
         self._attr_device_info = DeviceInfo(
