@@ -203,18 +203,24 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
 
 
 class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
-    # Modern HA naming: entity name is relative to the device name.
+    # Modern HA naming: this controls LinkTap's watering-plan suspension,
+    # not pause/resume of the current watering session.
     _attr_has_entity_name = True
-    _attr_name = "Pause"
+    _attr_name = "Pause Water Plan"
 
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
-        self._name = f"Pause {tap[NAME]}"
+        self._name = f"Pause Water Plan {tap[NAME]}"
         self.tap_name = tap[NAME]
         self.tap_id = tap[TAP_ID]
         self.platform = "switch"
         self.hass = hass
-        self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}_pause")
+
+        # IMPORTANT: unique_id is intentionally unchanged so existing entity
+        # registry/history remains attached to the same entity.
+        self._attr_unique_id = slugify(
+            f"{DOMAIN}_{self.platform}_{self.tap_id}_pause"
+        )
         self._attr_icon = "mdi:pause-circle"
         self._attr_device_info = DeviceInfo(
             identifiers={
@@ -269,6 +275,8 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     async def _pause_tap(self, hours):
-        _LOGGER.debug(f"PauseSwitch: Pausing {self.entity_id} for {hours} hours")
+        _LOGGER.debug(
+            f"Pause Water Plan: setting {self.entity_id} for {hours} hours"
+        )
         gw_id = self.coordinator.get_gw_id()
         await self.coordinator.tap_api.pause_tap(gw_id, self.tap_id, hours)
