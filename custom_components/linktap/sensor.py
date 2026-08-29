@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import random
 
 import aiohttp
@@ -120,6 +121,10 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
 
 class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
 
+    # Allow modest overshoot because the gateway may report a final metered value
+    # slightly beyond a configured volume stop target.
+    VOLUME_LIMIT_TOLERANCE = 1.10
+
     def __init__(self, coordinator, hass, tap, unit):
         super().__init__(coordinator)
         self.tap_id = tap[TAP_ID]
@@ -138,7 +143,11 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         )
         self._total = 0.0
         self._previous_volume = 0.0
+        self._previous_watering = False
         self._restored = False
+        self._rejected_volume_samples = 0
+        self._last_rejected_volume = None
+        self._last_rejection_reason = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -150,10 +159,65 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
             except ValueError:
                 self._total = 0.0
 
+    @staticmethod
+    def _finite_float(value):
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if math.isfinite(parsed) else None
+
+    def _reject_volume(self, current, reason):
+        self._rejected_volume_samples += 1
+        self._last_rejected_volume = current
+        self._last_rejection_reason = reason
+        _LOGGER.warning(
+            "Ignoring implausible volume reading %s for tap %s: %s",
+            current,
+            self.tap_id,
+            reason,
+        )
+        self.async_write_ha_state()
+
     def _handle_coordinator_update(self) -> None:
-        if not self.coordinator.data:
+        data = self.coordinator.data
+        if not data:
             return
-        current = float(self.coordinator.data.get("volume", 0))
+
+        current = self._finite_float(data.get("volume"))
+        if current is None or current < 0:
+            self._reject_volume(data.get("volume"), "volume is not a finite non-negative number")
+            return
+
+        is_watering = bool(data.get("is_watering", False))
+        volume_limit = self._finite_float(data.get("volume_limit"))
+
+        # Prefer the gateway's per-session volume limit when one is active. This
+        # avoids a device-independent hard-coded litre/gallon ceiling.
+        if volume_limit is not None and volume_limit > 0:
+            plausible_limit = volume_limit * self.VOLUME_LIMIT_TOLERANCE
+            if current > plausible_limit:
+                self._reject_volume(
+                    current,
+                    f"exceeds active volume limit {volume_limit} by more than 10%",
+                )
+                return
+
+        # Outside an active watering session the API normally retains the final
+        # session volume. It should not suddenly increase. Permit one final increase
+        # on the watering -> stopped transition so the last metered sample is kept.
+        if (
+            not self._restored
+            and not is_watering
+            and not self._previous_watering
+            and current > self._previous_volume
+        ):
+            self._reject_volume(
+                current,
+                "volume increased while no watering session was active",
+            )
+            return
+
         if self._restored:
             # API retains last session's volume after completion; offset _total so
             # native_value == restored state and the volume isn't counted twice.
@@ -162,8 +226,18 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         elif current < self._previous_volume:
             # volume drop means a new session started; commit the completed session
             self._total += self._previous_volume
+
         self._previous_volume = current
+        self._previous_watering = is_watering
         self.async_write_ha_state()
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "rejected_volume_samples": self._rejected_volume_samples,
+            "last_rejected_volume": self._last_rejected_volume,
+            "last_rejection_reason": self._last_rejection_reason,
+        }
 
     @property
     def native_value(self):
