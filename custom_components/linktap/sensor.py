@@ -22,7 +22,6 @@ _LOGGER = logging.getLogger(__name__)
 
 from .const import DOMAIN, GW_ID, GW_IP, MANUFACTURER, NAME, TAP_ID
 
-
 # Volume Total is persistent, so a corrupt raw session-volume sample must not be
 # allowed to enter its accumulator. This is deliberately a very generous
 # catastrophic fallback, not a claimed hardware flow/volume specification.
