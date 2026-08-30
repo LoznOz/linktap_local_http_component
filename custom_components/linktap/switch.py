@@ -22,24 +22,11 @@ from homeassistant.util import slugify
 
 _LOGGER = logging.getLogger(__name__)
 
-from .const import (
-    ATTR_DEFAULT_TIME,
-    ATTR_DURATION,
-    ATTR_STATE,
-    ATTR_VOL,
-    ATTR_VOLUME,
-    CONF_MAX_WATERING_DURATION,
-    CONF_MAX_WATERING_VOLUME,
-    CONF_WATERING_SAFETY_LIMITS,
-    DEFAULT_TIME,
-    DEFAULT_VOL,
-    DOMAIN,
-    GW_ID,
-    GW_IP,
-    MANUFACTURER,
-    NAME,
-    TAP_ID,
-)
+from .const import (ATTR_DEFAULT_TIME, ATTR_DURATION, ATTR_STATE, ATTR_VOL,
+                    ATTR_VOLUME, CONF_MAX_WATERING_DURATION,
+                    CONF_MAX_WATERING_VOLUME, CONF_WATERING_SAFETY_LIMITS,
+                    DEFAULT_TIME, DEFAULT_VOL, DOMAIN, GW_ID, GW_IP,
+                    MANUFACTURER, NAME, TAP_ID)
 
 
 def _number_entity_id(hass, tap_id, suffix):
