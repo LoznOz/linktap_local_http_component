@@ -7,11 +7,8 @@ import aiohttp
 import homeassistant.helpers.config_validation as cv
 import homeassistant.util.dt as dt_util
 import voluptuous as vol
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import (SensorDeviceClass, SensorEntity,
+                                             SensorStateClass)
 from homeassistant.const import UnitOfVolumeFlowRate
 from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
