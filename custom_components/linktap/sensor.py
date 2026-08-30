@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import math
 import random
 
 import aiohttp
@@ -20,6 +21,23 @@ from homeassistant.util import slugify
 _LOGGER = logging.getLogger(__name__)
 
 from .const import DOMAIN, GW_ID, GW_IP, MANUFACTURER, NAME, TAP_ID
+
+
+# Volume Total is persistent, so a corrupt raw session-volume sample must not be
+# allowed to enter its accumulator. This is deliberately a very generous
+# catastrophic fallback, not a claimed hardware flow/volume specification.
+#
+# The integration's existing HA instant-watering volume control tops out at
+# 2,000 configured volume units; 10,000 leaves substantial headroom for
+# schedules or watering started outside Home Assistant while still rejecting
+# the extreme values reported in issue #94.
+MAX_PLAUSIBLE_SESSION_VOLUME = 10000.0
+
+# When LinkTap reports a non-zero volume_limit, use it as a stronger contextual
+# bound, but allow generous overshoot/tolerance to avoid false positives from
+# valve-close latency, stale rounding, or reporting differences.
+VOLUME_LIMIT_MULTIPLIER = 2.0
+VOLUME_LIMIT_ABSOLUTE_TOLERANCE = 20.0
 
 
 async def async_setup_entry(
@@ -183,15 +201,86 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         state = await self.async_get_last_state()
         if state and state.state not in ("unknown", "unavailable"):
             try:
-                self._total = float(state.state)
-                self._restored = True
-            except ValueError:
+                restored_total = float(state.state)
+                if math.isfinite(restored_total) and restored_total >= 0:
+                    self._total = restored_total
+                    self._restored = True
+                else:
+                    _LOGGER.warning(
+                        "Ignoring invalid restored Volume Total %s for LinkTap %s",
+                        state.state,
+                        self.tap_id,
+                    )
+                    self._total = 0.0
+            except (TypeError, ValueError):
                 self._total = 0.0
+
+    def _validated_current_volume(self):
+        """Return a safe raw session-volume sample, or None if rejected.
+
+        A rejected sample must not update _previous_volume. Otherwise a later
+        normal lower reading would be interpreted as a new-session boundary and
+        permanently commit the corrupt sample into Volume Total.
+        """
+        data = self.coordinator.data
+        raw_volume = data.get("volume")
+
+        try:
+            current = float(raw_volume)
+        except (TypeError, ValueError):
+            _LOGGER.warning(
+                "Ignoring non-numeric volume reading %r for LinkTap %s",
+                raw_volume,
+                self.tap_id,
+            )
+            return None
+
+        if not math.isfinite(current) or current < 0:
+            _LOGGER.warning(
+                "Ignoring invalid volume reading %r for LinkTap %s",
+                raw_volume,
+                self.tap_id,
+            )
+            return None
+
+        ceiling = MAX_PLAUSIBLE_SESSION_VOLUME
+        raw_volume_limit = data.get("volume_limit", 0)
+
+        try:
+            volume_limit = float(raw_volume_limit)
+        except (TypeError, ValueError):
+            volume_limit = 0.0
+
+        if math.isfinite(volume_limit) and volume_limit > 0:
+            contextual_ceiling = max(
+                volume_limit * VOLUME_LIMIT_MULTIPLIER,
+                volume_limit + VOLUME_LIMIT_ABSOLUTE_TOLERANCE,
+            )
+            ceiling = min(ceiling, contextual_ceiling)
+
+        if current > ceiling:
+            _LOGGER.warning(
+                "Ignoring implausible volume reading %s for LinkTap %s "
+                "(volume_limit=%r, accepted ceiling=%s)",
+                current,
+                self.tap_id,
+                raw_volume_limit,
+                ceiling,
+            )
+            return None
+
+        return current
 
     def _handle_coordinator_update(self) -> None:
         if not self.coordinator.data:
             return
-        current = float(self.coordinator.data.get("volume", 0))
+
+        current = self._validated_current_volume()
+        if current is None:
+            # Critical for #94: leave both _previous_volume and _total untouched.
+            # The next sane sample therefore cannot latch the rejected value.
+            return
+
         if self._restored:
             # API retains last session's volume after completion; offset _total so
             # native_value == restored state and the volume isn't counted twice.
@@ -200,6 +289,7 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
         elif current < self._previous_volume:
             # volume drop means a new session started; commit the completed session
             self._total += self._previous_volume
+
         self._previous_volume = current
         self.async_write_ha_state()
 
