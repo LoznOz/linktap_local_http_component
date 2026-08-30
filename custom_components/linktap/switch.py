@@ -197,9 +197,7 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         if hours is None:
             hours = 1
         _LOGGER.debug(f"Pausing {self.entity_id} for {hours} hours")
-        gw_id = self.coordinator.get_gw_id()
-        await self.tap_api.pause_tap(gw_id, self.tap_id, hours)
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_set_water_plan_pause(hours)
 
 
 class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
@@ -268,15 +266,12 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
                     f"PauseSwitch: Could not parse pause duration, using default 24: {e}"
                 )
         await self._pause_tap(hours=hours)
-        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
         await self._pause_tap(hours=0)
-        await self.coordinator.async_request_refresh()
 
     async def _pause_tap(self, hours):
         _LOGGER.debug(
             f"Pause Water Plan: setting {self.entity_id} for {hours} hours"
         )
-        gw_id = self.coordinator.get_gw_id()
-        await self.coordinator.tap_api.pause_tap(gw_id, self.tap_id, hours)
+        await self.coordinator.async_set_water_plan_pause(hours)
