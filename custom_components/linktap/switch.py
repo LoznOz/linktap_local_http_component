@@ -198,6 +198,14 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
             hours = 1
         _LOGGER.debug(f"Pausing {self.entity_id} for {hours} hours")
         gw_id = self.coordinator.get_gw_id()
+        if hours > 0 and bool(self.coordinator.data.get("is_paused", False)):
+            _LOGGER.debug(
+                "Water plan already paused; clearing existing pause before "
+                "applying %s hours",
+                hours,
+            )
+            await self.tap_api.pause_tap(gw_id, self.tap_id, 0)
+            await self.coordinator.async_request_refresh()
         await self.tap_api.pause_tap(gw_id, self.tap_id, hours)
         await self.coordinator.async_request_refresh()
 
@@ -279,4 +287,12 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
             f"Pause Water Plan: setting {self.entity_id} for {hours} hours"
         )
         gw_id = self.coordinator.get_gw_id()
+        if hours > 0 and bool(self.coordinator.data.get("is_paused", False)):
+            _LOGGER.debug(
+                "Water plan already paused; clearing existing pause before "
+                "applying %s hours",
+                hours,
+            )
+            await self.coordinator.tap_api.pause_tap(gw_id, self.tap_id, 0)
+            await self.coordinator.async_request_refresh()
         await self.coordinator.tap_api.pause_tap(gw_id, self.tap_id, hours)
