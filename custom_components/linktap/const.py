@@ -19,3 +19,15 @@ ATTR_DURATION = "Watering Duration"
 ATTR_VOLUME = "Watering Volume"
 ATTR_STATE = "is_watering"
 MANUFACTURER = "Linktap"
+
+# Optional per-device Home Assistant safety ceilings for instant watering.
+# These do not alter LinkTap's own limits; they constrain requests made by
+# this Home Assistant integration.
+CONF_WATERING_SAFETY_LIMITS = "watering_safety_limits"
+CONF_MAX_WATERING_DURATION = "max_watering_duration"
+CONF_MAX_WATERING_VOLUME = "max_watering_volume"
+
+# Existing integration/native entity maxima. Leaving an option unset preserves
+# these existing limits and therefore preserves current behaviour.
+NATIVE_MAX_WATERING_DURATION = 120
+NATIVE_MAX_WATERING_VOLUME = 2000

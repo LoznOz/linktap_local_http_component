@@ -1,0 +1,29 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "title": "Select LinkTap watering device",
+        "description": "Choose the LinkTap watering device whose optional instant-watering safety limits you want to configure.",
+        "data": {
+          "tap_id": "LinkTap watering device"
+        }
+      },
+      "limits": {
+        "title": "Instant watering safety limits — {tap_name}",
+        "description": "These optional Home Assistant safety limits apply to this LinkTap device only. Each installed LinkTap watering device is configured separately. They limit instant-watering requests made by Home Assistant and do not change LinkTap firmware limits. Leave either field blank to keep the integration's existing maximum for that control.",
+        "data": {
+          "max_watering_duration": "Maximum instant watering duration",
+          "max_watering_volume": "Maximum instant watering volume"
+        },
+        "data_description": {
+          "max_watering_duration": "Optional. Maximum duration Home Assistant may request for an instant watering session on this device.",
+          "max_watering_volume": "Optional. Maximum non-zero volume Home Assistant may request for an instant watering session on this device. A Watering Volume value of 0 still disables that session's volume cutoff."
+        }
+      }
+    },
+    "abort": {
+      "integration_not_loaded": "The LinkTap integration must be loaded before safety limits can be configured.",
+      "tap_not_found": "The selected LinkTap watering device could not be found."
+    }
+  }
+}
