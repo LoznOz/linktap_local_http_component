@@ -10,7 +10,7 @@ import voluptuous as vol
 from h11 import Data
 from homeassistant import core
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
-from homeassistant.exceptions import IntegrationError
+from homeassistant.exceptions import HomeAssistantError, IntegrationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.discovery import async_load_platform
@@ -117,9 +117,79 @@ class LinktapCoordinator(DataUpdateCoordinator):
         self.conf = conf
         self.hass = hass
         self.tap_id = tap_id
+        # Serialize all water-plan pause mutations for this tap. Without a lock,
+        # two HA callers could both observe an unpaused state and both send cmd 18.
+        self._pause_lock = asyncio.Lock()
 
     def get_gw_id(self):
         return self.conf[GW_ID]
+
+    async def async_set_water_plan_pause(self, hours):
+        """Safely set or clear this tap's watering-plan pause.
+
+        LinkTap issue #88 is destructive: a second positive cmd 18 while the
+        watering plan is already paused can deactivate the plan, even though
+        the gateway returns ret=0. Refresh immediately before the decision and
+        refuse repeated positive pause requests rather than risking plan loss.
+        """
+        hours = int(hours)
+        if hours < 0:
+            raise HomeAssistantError("Water plan pause duration cannot be negative")
+
+        async with self._pause_lock:
+            # Bypass the coordinator refresh debouncer: the safety decision must
+            # use a fresh gateway state, not a recently cached is_paused value.
+            await self.async_refresh()
+            if not self.last_update_success:
+                raise HomeAssistantError(
+                    "Unable to verify the current LinkTap water plan pause state; "
+                    "no pause command was sent."
+                )
+
+            is_paused = bool((self.data or {}).get("is_paused", False))
+
+            if hours > 0 and is_paused:
+                _LOGGER.warning(
+                    "Refusing repeated water plan pause for LinkTap %s: "
+                    "the plan is already paused and another positive pause "
+                    "request can deactivate the watering plan",
+                    self.tap_id,
+                )
+                raise HomeAssistantError(
+                    "Water plan is already paused. LinkTap cannot safely replace "
+                    "an active pause using the local API; the existing pause has "
+                    "been left unchanged."
+                )
+
+            if hours == 0 and not is_paused:
+                _LOGGER.debug(
+                    "Water plan for LinkTap %s is already unpaused; no command sent",
+                    self.tap_id,
+                )
+                return
+
+            gw_id = self.get_gw_id()
+            success = await self.tap_api.pause_tap(gw_id, self.tap_id, hours)
+            if not success:
+                raise HomeAssistantError(
+                    f"LinkTap gateway rejected water plan pause request for {self.tap_id}"
+                )
+
+            await self.async_refresh()
+            if not self.last_update_success:
+                raise HomeAssistantError(
+                    "LinkTap gateway accepted the water plan pause request, but "
+                    "Home Assistant could not verify the resulting gateway state."
+                )
+
+            expected_paused = hours > 0
+            actual_paused = bool((self.data or {}).get("is_paused", False))
+            if actual_paused != expected_paused:
+                action = "pause" if expected_paused else "unpause"
+                raise HomeAssistantError(
+                    f"LinkTap gateway accepted the {action} request but did not "
+                    "report the expected water plan pause state"
+                )
 
     #def get_vol_unit(self):
     #    return self.conf["vol_unit"]
