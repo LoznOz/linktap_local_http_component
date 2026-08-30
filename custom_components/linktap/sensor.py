@@ -7,7 +7,9 @@ import aiohttp
 import homeassistant.helpers.config_validation as cv
 import homeassistant.util.dt as dt_util
 import voluptuous as vol
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (SensorDeviceClass, SensorEntity,
+                                             SensorStateClass)
+from homeassistant.const import UnitOfVolumeFlowRate
 from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -19,7 +21,6 @@ _LOGGER = logging.getLogger(__name__)
 
 from .const import DOMAIN, GW_ID, GW_IP, MANUFACTURER, NAME, TAP_ID
 
-_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(
     hass, config, async_add_entities, discovery_info=None
@@ -27,6 +28,15 @@ async def async_setup_entry(
     """Setup the sensor platform."""
     taps = hass.data[DOMAIN][config.entry_id]["conf"]["taps"]
     vol_unit = hass.data[DOMAIN][config.entry_id]["conf"]["vol_unit"]
+
+    # Home Assistant requires canonical volume-flow units for the
+    # VOLUME_FLOW_RATE device class and long-term statistics.
+    # LinkTap reports the configured volume unit as L or Gal.
+    flow_unit = (
+        UnitOfVolumeFlowRate.LITERS_PER_MINUTE
+        if str(vol_unit).lower() == "l"
+        else UnitOfVolumeFlowRate.GALLONS_PER_MINUTE
+    )
     sensors = []
     for tap in taps:
         _LOGGER.debug(f"Configuring sensors for tap {tap}")
@@ -36,7 +46,17 @@ async def async_setup_entry(
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="total_duration", unit="s", icon="mdi:clock"))
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="remain_duration", unit="s", icon="mdi:clock"))
         sensors.append(LinktapWateringTimeTotalSensor(coordinator, hass, tap))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="speed", unit=f"{vol_unit}pm", icon="mdi:speedometer"))
+        sensors.append(
+            LinktapSensor(
+                coordinator,
+                hass,
+                tap,
+                data_attribute="speed",
+                unit=flow_unit,
+                device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
+                icon="mdi:speedometer",
+            )
+        )
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume", unit=vol_unit, device_class="water", icon="mdi:water-percent"))
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume_limit", unit=vol_unit, icon="mdi:water-percent"))
         sensors.append(LinktapVolumeTotalSensor(coordinator, hass, tap, unit=vol_unit))
@@ -46,19 +66,22 @@ async def async_setup_entry(
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode_string", unit="mode", icon="mdi:note"))
     async_add_entities(sensors, True)
 
+
 class LinktapSensor(CoordinatorEntity, SensorEntity):
+    # Modern HA naming: entity name is relative to the device name.
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, unit, device_class=False, icon=False):
         super().__init__(coordinator)
         name = data_attribute.replace("_", " ").title()
         self._state = None
-        self._name = tap[NAME] + " " + name
-        self._id = self._name
         self.attribute = data_attribute
         self.tap_id = tap[TAP_ID]
         self.tap_name = tap[NAME]
         self.platform = "sensor"
+        # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{data_attribute}_{self.tap_id}")
+        self._attr_name = name
         self._attrs = {
             "unit_of_measurement": unit
         }
@@ -66,7 +89,10 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
             self._attr_icon = icon
         if device_class:
             self._attr_device_class = device_class
-            if device_class == "water":
+            if device_class in (
+                "water",
+                SensorDeviceClass.VOLUME_FLOW_RATE,
+            ):
                 self._attr_state_class = SensorStateClass.MEASUREMENT
 
         self._attr_device_info = DeviceInfo(
@@ -78,11 +104,12 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
             model=tap[TAP_ID],
             configuration_url="http://" + tap[GW_IP] + "/"
         )
-#Modemode: watering mode (1 - Instant Mode, 2 - Calendar mode, 3 - 7 day mode, 4 - Odd-even mode, 5 -Interval mode, 6 - Month mode).
+
+    # Modemode: watering mode (1 - Instant Mode, 2 - Calendar mode,
+    # 3 - 7 day mode, 4 - Odd-even mode, 5 - Interval mode, 6 - Month mode).
     def translate_plan_mode(self, mode):
         modes = ['NA', 'Instant', 'Calendar', '7-Day', 'Odd-Even', 'Interval', 'Month']
         return modes[mode]
-
 
     @property
     def unique_id(self):
@@ -90,24 +117,32 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
         return self._attr_unique_id
 
     @property
-    def name(self):
-        return f"{MANUFACTURER} {self._id}"
-
-    @property
     def extra_state_attributes(self):
         return self._attrs
 
     @property
     def state(self):
-
         attributes = self.coordinator.data
         _LOGGER.debug(f"Sensor state: {attributes}")
-        previous_state = self._state
         if not attributes:
             self._state = "unknown"
         else:
             if self.attribute == "plan_mode_string":
                 self._state = self.translate_plan_mode(attributes["plan_mode"])
+            elif self.attribute == "remain_duration":
+                # LinkTap can retain the final remaining-duration value after a
+                # watering session is stopped. In Home Assistant, a remaining
+                # duration is semantically zero when watering is no longer active.
+                #
+                # Preserve the reported remaining duration while paused so a
+                # paused watering session can still show how much time remains.
+                is_watering = bool(attributes.get("is_watering", False))
+                is_paused = bool(attributes.get("is_paused", False))
+                self._state = (
+                    attributes[self.attribute]
+                    if is_watering or is_paused
+                    else 0
+                )
             else:
                 self._state = attributes[self.attribute]
 
@@ -119,11 +154,14 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
 
 
 class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    # Modern HA naming: entity name is relative to the device name.
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, hass, tap, unit):
         super().__init__(coordinator)
         self.tap_id = tap[TAP_ID]
-        self._attr_name = f"{MANUFACTURER} {tap[NAME]} Volume Total"
+        self._attr_name = "Volume Total"
+        # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
         self._attr_unique_id = slugify(f"{DOMAIN}_sensor_volume_total_{self.tap_id}")
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = "water"
@@ -171,11 +209,14 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
 
 
 class LinktapWateringTimeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    # Modern HA naming: entity name is relative to the device name.
+    _attr_has_entity_name = True
 
     def __init__(self, coordinator, hass, tap):
         super().__init__(coordinator)
         self.tap_id = tap[TAP_ID]
-        self._attr_name = f"{MANUFACTURER} {tap[NAME]} Watering Time Total"
+        self._attr_name = "Watering Time Total"
+        # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
         self._attr_unique_id = slugify(f"{DOMAIN}_sensor_watering_time_total_{self.tap_id}")
         self._attr_native_unit_of_measurement = "s"
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING

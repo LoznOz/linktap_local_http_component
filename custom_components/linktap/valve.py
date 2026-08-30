@@ -12,7 +12,9 @@ from homeassistant.const import (ATTR_ENTITY_ID, CONF_ENTITY_ID,
                                  SERVICE_TURN_OFF, SERVICE_TURN_ON, STATE_OFF,
                                  STATE_ON)
 from homeassistant.core import Event, EventStateChangedData, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -23,6 +25,14 @@ from homeassistant.util import slugify
 _LOGGER = logging.getLogger(__name__)
 
 from .const import ATTR_STATE, DOMAIN, GW_IP, MANUFACTURER, NAME, TAP_ID
+
+
+def _switch_entity_id(hass, tap_id):
+    """Resolve the LinkTap switch by stable unique ID, not generated entity ID."""
+    unique_id = slugify(f"{DOMAIN}_switch_{tap_id}")
+    return er.async_get(hass).async_get_entity_id(
+        SWITCH_DOMAIN, DOMAIN, unique_id
+    )
 
 
 async def async_setup_entry(
@@ -47,7 +57,12 @@ async def async_setup_entry(
         "_start_watering"
         )
 
+
 class LinktapValve(CoordinatorEntity, ValveEntity):
+    # Modern HA naming: this is a main feature of the device.
+    _attr_has_entity_name = True
+    _attr_name = None
+
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
         self._state = None
@@ -60,7 +75,6 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}")
         self._attrs = {
             "data": self.coordinator.data,
-            "switch": self.switch_entity,
         }
         self._attr_device_info = DeviceInfo(
             identifiers={
@@ -76,21 +90,24 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
         return self._attr_unique_id
 
     @property
-    def name(self):
-        return f"{MANUFACTURER} {self._name}"
-
-    @property
     def switch_entity(self):
-        name = self._name.replace(" ", "_")
-        name = name.replace("-", "_")
-        return f"switch.{DOMAIN}_{name}".lower()
+        return _switch_entity_id(self.hass, self.tap_id)
+
+    def _require_switch_entity(self):
+        entity_id = self.switch_entity
+        if entity_id is None:
+            raise HomeAssistantError(
+                f"Unable to resolve LinkTap switch entity for tap {self.tap_id}"
+            )
+        return entity_id
 
     async def async_open_valve(self, **kwargs):
         """Open the valve."""
+        switch_entity = self._require_switch_entity()
         await self.hass.services.async_call(
             SWITCH_DOMAIN,
             SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: self.switch_entity},
+            {ATTR_ENTITY_ID: switch_entity},
             blocking=True,
             context=self._context,
         )
@@ -98,10 +115,11 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
 
     async def async_close_valve(self, **kwargs):
         """Close valve."""
+        switch_entity = self._require_switch_entity()
         await self.hass.services.async_call(
             SWITCH_DOMAIN,
             SERVICE_TURN_OFF,
-            {ATTR_ENTITY_ID: self.switch_entity},
+            {ATTR_ENTITY_ID: switch_entity},
             blocking=True,
             context=self._context,
         )
@@ -109,6 +127,8 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
 
     @property
     def extra_state_attributes(self):
+        # Resolve dynamically so HA/user entity-id renames are followed.
+        self._attrs["switch"] = self.switch_entity
         return self._attrs
 
     @callback
@@ -117,24 +137,27 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
     ) -> None:
         """Handle child updates."""
         super().async_state_changed_listener(event)
+        switch_entity = self.switch_entity
         if (
             not self.available
-            or (state := self.hass.states.get(self.switch_entity)) is None
+            or switch_entity is None
+            or (state := self.hass.states.get(switch_entity)) is None
         ):
             return
 
-        self._attr_is_closed = self._attrs[ATTR_STATE] != STATE_ON
+        self._attr_is_closed = state.state != STATE_ON
 
     @property
     def state(self):
         status = self.coordinator.data
+        self._attrs["data"] = status
         self._attrs[ATTR_STATE] = status[ATTR_STATE]
         state = "unknown"
         if status[ATTR_STATE]:
             state = "open"
         elif not status[ATTR_STATE]:
             state = "closed"
-            _LOGGER.debug(f"Valve {self.name} state {state}")
+            _LOGGER.debug(f"Valve {self.entity_id} state {state}")
         self._attr_is_closed = state != "open"
         return state
 

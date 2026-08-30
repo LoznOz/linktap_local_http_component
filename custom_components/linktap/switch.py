@@ -7,9 +7,12 @@ import re
 import aiohttp
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
+from homeassistant.components.number import DOMAIN as NUMBER_DOMAIN
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import STATE_UNKNOWN
-from homeassistant.helpers import entity_platform, service
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.helpers import entity_platform
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import service
 from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -22,6 +25,19 @@ _LOGGER = logging.getLogger(__name__)
 from .const import (ATTR_DEFAULT_TIME, ATTR_DURATION, ATTR_STATE, ATTR_VOL,
                     ATTR_VOLUME, DEFAULT_TIME, DEFAULT_VOL, DOMAIN, GW_ID,
                     GW_IP, MANUFACTURER, NAME, TAP_ID)
+
+
+def _number_entity_id(hass, tap_id, suffix):
+    """Resolve a LinkTap number entity by its stable unique ID.
+
+    Do not construct an entity_id from the tap name. Home Assistant entity IDs
+    can include area/device components and can also be renamed by the user.
+    The unique ID is stable and is the correct registry key for sibling lookup.
+    """
+    unique_id = slugify(f"{DOMAIN}_number_{tap_id}_{suffix}")
+    return er.async_get(hass).async_get_entity_id(
+        NUMBER_DOMAIN, DOMAIN, unique_id
+    )
 
 
 async def async_setup_entry(
@@ -43,7 +59,12 @@ async def async_setup_entry(
         "_pause_tap"
         )
 
+
 class LinktapSwitch(CoordinatorEntity, SwitchEntity):
+    # Modern HA naming: this is a main feature of the device.
+    _attr_has_entity_name = True
+    _attr_name = None
+
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
         self._state = None
@@ -57,8 +78,6 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_icon = "mdi:water-pump"
         self._attrs = {
             "data": self.coordinator.data,
-            "duration_entity": self.duration_entity,
-            "volume_entity": self.volume_entity
         }
         self._attr_device_info = DeviceInfo(
             identifiers={
@@ -74,24 +93,20 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         return self._attr_unique_id
 
     @property
-    def name(self):
-        return f"{MANUFACTURER} {self._name}"
+    def duration_entity(self):
+        return _number_entity_id(self.hass, self.tap_id, "watering_duration")
 
     @property
-    def duration_entity(self) -> str:
-        slug = slugify(self._name)  # HA-native conversion
-        return f"number.{DOMAIN}_{slug}_watering_duration"
-
-    @property
-    def volume_entity(self) -> str:
-        slug = slugify(self._name)
-        return f"number.{DOMAIN}_{slug}_watering_volume"
+    def volume_entity(self):
+        return _number_entity_id(self.hass, self.tap_id, "watering_volume")
 
     async def async_turn_on(self, **kwargs):
         duration = self.get_watering_duration()
         seconds = int(float(duration)) * 60
         gw_id = self.coordinator.get_gw_id()
-        attributes = await self.tap_api.turn_on(gw_id, self.tap_id, seconds, self.get_watering_volume())
+        attributes = await self.tap_api.turn_on(
+            gw_id, self.tap_id, seconds, self.get_watering_volume()
+        )
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
@@ -100,13 +115,18 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     def get_watering_duration(self):
-        entity = self.hass.states.get(self.duration_entity)
+        entity_id = self.duration_entity
+        entity = self.hass.states.get(entity_id) if entity_id else None
         if not entity:
-            _LOGGER.debug(f"Entity {self.duration_entity} not found -- setting default")
+            _LOGGER.debug(
+                "Watering duration entity could not be resolved -- setting default"
+            )
             duration = DEFAULT_TIME
             self._attrs[ATTR_DEFAULT_TIME] = True
-        elif entity.state == STATE_UNKNOWN:
-            _LOGGER.debug(f"Entity {self.duration_entity} state unknown -- setting default")
+        elif entity.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
+            _LOGGER.debug(
+                f"Entity {entity_id} state {entity.state} -- setting default"
+            )
             duration = DEFAULT_TIME
             self._attrs[ATTR_DEFAULT_TIME] = True
         else:
@@ -116,18 +136,23 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         return duration
 
     def get_watering_volume(self):
-        entity = self.hass.states.get(self.volume_entity)
+        entity_id = self.volume_entity
+        entity = self.hass.states.get(entity_id) if entity_id else None
         if not entity:
             volume = DEFAULT_VOL
-            _LOGGER.debug(f"Entity {self.volume_entity} not found -- setting default")
+            _LOGGER.debug(
+                "Watering volume entity could not be resolved -- setting default"
+            )
             self._attrs[ATTR_VOL] = False
-        elif entity.state == STATE_UNKNOWN:
+        elif entity.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             volume = DEFAULT_VOL
-            _LOGGER.debug(f"Entity {self.volume_entity} state unknown -- setting default")
+            _LOGGER.debug(
+                f"Entity {entity_id} state {entity.state} -- setting default"
+            )
             self._attrs[ATTR_VOL] = False
         elif int(float(entity.state)) == 0:
             volume = entity.state
-            _LOGGER.debug(f"Entity {self.volume_entity} set to 0 -- ignore")
+            _LOGGER.debug(f"Entity {entity_id} set to 0 -- ignore")
             self._attrs[ATTR_VOL] = False
         else:
             volume = entity.state
@@ -137,6 +162,9 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self):
+        # Resolve dynamically so HA/user entity-id renames are followed.
+        self._attrs["duration_entity"] = self.duration_entity
+        self._attrs["volume_entity"] = self.volume_entity
         return self._attrs
 
     @property
@@ -154,7 +182,7 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
             state = "on"
         elif not status[ATTR_STATE]:
             state = "off"
-            _LOGGER.debug(f"Switch {self.name} state {state}")
+            _LOGGER.debug(f"Switch {self.entity_id} state {state}")
         return state
 
     @property
@@ -173,15 +201,26 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         await self.tap_api.pause_tap(gw_id, self.tap_id, hours)
         await self.coordinator.async_request_refresh()
 
+
 class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
+    # Modern HA naming: this controls LinkTap's watering-plan suspension,
+    # not pause/resume of the current watering session.
+    _attr_has_entity_name = True
+    _attr_name = "Pause Water Plan"
+
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
-        self._name = f"Pause {tap[NAME]}"
-        self.tap_name = tap[NAME]  # Store original tap name for correct slug
+        self._name = f"Pause Water Plan {tap[NAME]}"
+        self.tap_name = tap[NAME]
         self.tap_id = tap[TAP_ID]
         self.platform = "switch"
         self.hass = hass
-        self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}_pause")
+
+        # IMPORTANT: unique_id is intentionally unchanged so existing entity
+        # registry/history remains attached to the same entity.
+        self._attr_unique_id = slugify(
+            f"{DOMAIN}_{self.platform}_{self.tap_id}_pause"
+        )
         self._attr_icon = "mdi:pause-circle"
         self._attr_device_info = DeviceInfo(
             identifiers={
@@ -199,13 +238,8 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
         return self._attr_unique_id
 
     @property
-    def name(self):
-        return self._name
-
-    @property
-    def pause_duration_entity(self) -> str:
-        slug = slugify(self.tap_name)  # Use original tap name, not self._name
-        return f"number.{DOMAIN}_{slug}_pause_duration"
+    def pause_duration_entity(self):
+        return _number_entity_id(self.hass, self.tap_id, "pause_duration")
 
     @property
     def is_on(self):
@@ -214,18 +248,25 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self):
+        self._attrs["pause_duration_entity"] = self.pause_duration_entity
         return self._attrs
 
     async def async_turn_on(self, **kwargs):
         hours = 24
-        _LOGGER.debug(f"PauseSwitch: Looking for {self.pause_duration_entity}")
-        entity = self.hass.states.get(self.pause_duration_entity)
-        if entity and entity.state not in (None, "unknown"):
-            _LOGGER.debug(f"PauseSwitch: Found pause duration entity {self.pause_duration_entity} with state {entity.state}")
+        entity_id = self.pause_duration_entity
+        _LOGGER.debug(f"PauseSwitch: Looking for {entity_id}")
+        entity = self.hass.states.get(entity_id) if entity_id else None
+        if entity and entity.state not in (None, STATE_UNKNOWN, STATE_UNAVAILABLE):
+            _LOGGER.debug(
+                f"PauseSwitch: Found pause duration entity {entity_id} "
+                f"with state {entity.state}"
+            )
             try:
                 hours = int(float(entity.state))
             except Exception as e:
-                _LOGGER.warning(f"PauseSwitch: Could not parse pause duration, using default 1: {e}")
+                _LOGGER.warning(
+                    f"PauseSwitch: Could not parse pause duration, using default 24: {e}"
+                )
         await self._pause_tap(hours=hours)
         await self.coordinator.async_request_refresh()
 
@@ -234,6 +275,8 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
     async def _pause_tap(self, hours):
-        _LOGGER.debug(f"PauseSwitch: Pausing {self.entity_id} for {hours} hours")
+        _LOGGER.debug(
+            f"Pause Water Plan: setting {self.entity_id} for {hours} hours"
+        )
         gw_id = self.coordinator.get_gw_id()
         await self.coordinator.tap_api.pause_tap(gw_id, self.tap_id, hours)
