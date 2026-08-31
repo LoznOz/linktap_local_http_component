@@ -1,4 +1,9 @@
 {
+  "config": {
+    "error": {
+      "invalid_gateway_ip": "Enter the LinkTap gateway IPv4 address only, for example 192.168.1.123. Do not include http://, a port, or /api.shtml."
+    }
+  },
   "options": {
     "step": {
       "init": {
