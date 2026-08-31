@@ -1,6 +1,7 @@
 """Config flow to configure."""
 from __future__ import annotations
 
+import ipaddress
 import logging
 import secrets
 from typing import Any
@@ -20,6 +21,19 @@ from .const import (CONF_MAX_WATERING_DURATION, CONF_MAX_WATERING_VOLUME,
 _LOGGER = logging.getLogger(__name__)
 
 
+def _validated_gateway_ip(value: str) -> str | None:
+    """Return a normalized IPv4 gateway address, or None if invalid."""
+    candidate = value.strip()
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+
+    if address.version != 4:
+        return None
+    return str(address)
+
+
 @config_entries.HANDLERS.register(DOMAIN)
 class LinktapFlowHandler(config_entries.ConfigFlow):
     VERSION = 1
@@ -33,12 +47,20 @@ class LinktapFlowHandler(config_entries.ConfigFlow):
     async def async_step_user(self, user_input=None):
         """Handle a flow start."""
         _LOGGER.debug(f"Starting async_step_user of {DEFAULT_NAME}")
-        errors = None
+        errors = {}
 
         if user_input is not None:
-            await self.async_set_unique_id(secrets.token_hex(8))
-            self._abort_if_unique_id_configured()
-            return self.async_create_entry(title=DEFAULT_NAME, data=user_input)
+            gateway_ip = _validated_gateway_ip(user_input[GW_IP])
+            if gateway_ip is None:
+                errors[GW_IP] = "invalid_gateway_ip"
+            else:
+                normalized_input = dict(user_input)
+                normalized_input[GW_IP] = gateway_ip
+                await self.async_set_unique_id(secrets.token_hex(8))
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=DEFAULT_NAME, data=normalized_input
+                )
 
         schema = vol.Schema({vol.Required(GW_IP, default=GW_IP): str})
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
