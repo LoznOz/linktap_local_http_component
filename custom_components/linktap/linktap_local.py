@@ -4,11 +4,22 @@ import re
 from json.decoder import JSONDecodeError
 
 import aiohttp
-from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
-                      wait_exponential)
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from .const import (CONFIG_CMD, DEFAULT_TIME, DISMISS_ALERT_CMD, PAUSE_CMD,
-                    START_CMD, STATUS_CMD, STOP_CMD)
+from .const import (
+    CONFIG_CMD,
+    DEFAULT_TIME,
+    DISMISS_ALERT_CMD,
+    PAUSE_CMD,
+    START_CMD,
+    STATUS_CMD,
+    STOP_CMD,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,7 +78,7 @@ class LinktapLocal:
         # Ive never seen it fail twice, so lets try it again.
         if status == 404:
             _LOGGER.debug("Got a 404 issue: Wait and try again")
-            raise JSONDecodeError("404 Not Found")
+            raise JSONDecodeError("404 Not Found", "", 0)
         return response
 
     async def fetch_data(self, gw_id, dev_id):
