@@ -119,8 +119,20 @@ class LinktapLocal:
         status = await self._request(data)
         return status["ret"] == 0
 
-    async def pause_tap(self, gw_id, dev_id, hours):
+    @staticmethod
+    def parse_firmware_version(version):
+        """Return the first six numerical firmware characters as an integer."""
+        digits = "".join(char for char in str(version) if char.isdigit())
+        if len(digits) < 6:
+            return None
+        return int(digits[:6])
+
+    async def pause_tap(self, gw_id, dev_id, hours, *, new_protocol=False, option=0):
         data = {"cmd": PAUSE_CMD, "gw_id": gw_id, "dev_id": dev_id, "duration": hours}
+        # New CMD 18: option applies to positive pause requests only. LinkTap's
+        # pre-release firmware testing confirmed resume must omit option entirely.
+        if new_protocol and hours > 0:
+            data["option"] = option
         _LOGGER.debug(f"Pause Payload: {data}")
         status = await self._request(data)
         _LOGGER.debug(f"Pause Response: {status}")
