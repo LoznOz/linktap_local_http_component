@@ -282,3 +282,38 @@ class TestDismissAlert:
         with patch.object(linktap, "_request", mock_req):
             await linktap.dismiss_alert(MOCK_GW_ID, MOCK_TAP_ID)
         assert mock_req.call_args[0][0]["cmd"] == DISMISS_ALERT_CMD
+
+
+class TestCmd18NewProtocol:
+    def test_parse_firmware_version(self, linktap):
+        assert linktap.parse_firmware_version("S0609512609181404I") == 60951
+        assert linktap.parse_firmware_version("S0609522609181404I") == 60952
+        assert linktap.parse_firmware_version("invalid") is None
+
+    async def test_positive_pause_includes_option(self, linktap):
+        mock_req = AsyncMock(return_value={"ret": 0})
+        with patch.object(linktap, "_request", mock_req):
+            await linktap.pause_tap(
+                MOCK_GW_ID, MOCK_TAP_ID, hours=2, new_protocol=True, option=1
+            )
+        payload = mock_req.call_args[0][0]
+        assert payload["duration"] == 2
+        assert payload["option"] == 1
+
+    async def test_resume_omits_option_even_if_supplied(self, linktap):
+        mock_req = AsyncMock(return_value={"ret": 0})
+        with patch.object(linktap, "_request", mock_req):
+            await linktap.pause_tap(
+                MOCK_GW_ID, MOCK_TAP_ID, hours=0, new_protocol=True, option=1
+            )
+        payload = mock_req.call_args[0][0]
+        assert payload["duration"] == 0
+        assert "option" not in payload
+
+    async def test_legacy_pause_never_includes_option(self, linktap):
+        mock_req = AsyncMock(return_value={"ret": 0})
+        with patch.object(linktap, "_request", mock_req):
+            await linktap.pause_tap(
+                MOCK_GW_ID, MOCK_TAP_ID, hours=2, new_protocol=False, option=1
+            )
+        assert "option" not in mock_req.call_args[0][0]
