@@ -150,7 +150,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
         self.conf = conf
         self.hass = hass
         self.tap_id = tap_id
-        parsed_version = linker.parse_firmware_version(conf.get(GW_VERSION))
+        parsed_version = LinktapLocal.parse_firmware_version(conf.get(GW_VERSION))
         self._new_pause_protocol = bool(
             parsed_version is not None
             and (
