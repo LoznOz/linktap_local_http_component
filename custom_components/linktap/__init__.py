@@ -24,7 +24,18 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from tenacity import RetryError
 
-from .const import DOMAIN, GW_ID, GW_IP, NAME, PLATFORMS, TAP_ID
+from .const import (
+    CMD18_PRERELEASE_TEST_VERSION,
+    DOMAIN,
+    ENABLE_CMD18_PRERELEASE_TESTING,
+    GW_ID,
+    GW_IP,
+    GW_VERSION,
+    NAME,
+    NEW_PAUSE_API_MIN_VERSION,
+    PLATFORMS,
+    TAP_ID,
+)
 from .linktap_local import LinktapLocal
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,6 +87,7 @@ async def async_setup_entry(hass: core.HomeAssistant, entry: ConfigEntry) -> boo
     coordinator_conf = {
         GW_IP: gw_ip,
         GW_ID: gw_id,
+        GW_VERSION: gateway_config.get("ver"),
     }
     counter = 0
     tap_list = []
@@ -138,6 +150,17 @@ class LinktapCoordinator(DataUpdateCoordinator):
         self.conf = conf
         self.hass = hass
         self.tap_id = tap_id
+        parsed_version = linker.parse_firmware_version(conf.get(GW_VERSION))
+        self._new_pause_protocol = bool(
+            parsed_version is not None
+            and (
+                parsed_version >= NEW_PAUSE_API_MIN_VERSION
+                or (
+                    ENABLE_CMD18_PRERELEASE_TESTING
+                    and parsed_version == CMD18_PRERELEASE_TEST_VERSION
+                )
+            )
+        )
         # Serialize all water-plan pause mutations for this tap. Without a lock,
         # two HA callers could both observe an unpaused state and both send cmd 18.
         self._pause_lock = asyncio.Lock()
@@ -215,11 +238,24 @@ class LinktapCoordinator(DataUpdateCoordinator):
                 return
 
             gw_id = self.get_gw_id()
-            success = await self.tap_api.pause_tap(gw_id, self.tap_id, hours)
+            success = await self.tap_api.pause_tap(
+                gw_id,
+                self.tap_id,
+                hours,
+                new_protocol=self._new_pause_protocol,
+            )
             if not success:
                 raise HomeAssistantError(
                     f"LinkTap gateway rejected water plan pause request for {self.tap_id}"
                 )
+
+            if self._new_pause_protocol:
+                # The new firmware can return the previous/intermediate CMD 3 state
+                # for several seconds after accepting CMD 18. Do not turn a valid
+                # ret=0 into a false HA service failure; normal coordinator polling
+                # will converge on the settled state.
+                await self.async_request_refresh()
+                return
 
             await self.async_refresh()
             if not self.last_update_success:
