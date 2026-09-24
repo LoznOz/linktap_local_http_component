@@ -10,14 +10,14 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.linktap import LinktapCoordinator
-from custom_components.linktap.const import GW_ID, GW_IP
+from custom_components.linktap.const import GW_ID, GW_IP, GW_VERSION
 from tests.conftest import MOCK_GW_ID, MOCK_GW_IP, MOCK_TAP_ID, MOCK_TAP_STATUS
 
 
 @pytest.fixture
 def coordinator(hass, mock_linktap_api):
     """Return a LinktapCoordinator with pre-populated data and a mocked API."""
-    conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID}
+    conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: "S0609500000000000I"}
     c = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
     c.data = dict(MOCK_TAP_STATUS)
     c.last_update_success = True
@@ -92,7 +92,7 @@ class TestAsyncSetWaterPlanPause:
             await coordinator.async_set_water_plan_pause(3)
 
         coordinator.tap_api.pause_tap.assert_called_once_with(
-            MOCK_GW_ID, MOCK_TAP_ID, 3
+            MOCK_GW_ID, MOCK_TAP_ID, 3, new_protocol=False
         )
 
     async def test_unpause_calls_api_and_verifies_unpaused_state(self, coordinator):
@@ -113,7 +113,7 @@ class TestAsyncSetWaterPlanPause:
             await coordinator.async_set_water_plan_pause(0)
 
         coordinator.tap_api.pause_tap.assert_called_once_with(
-            MOCK_GW_ID, MOCK_TAP_ID, 0
+            MOCK_GW_ID, MOCK_TAP_ID, 0, new_protocol=False
         )
 
     async def test_gateway_rejection_raises(self, coordinator):
@@ -213,3 +213,44 @@ class TestRawVolumeValidation:
                 await coordinator._async_update_data()
 
         assert coordinator.tap_api.fetch_data.await_count == 2
+
+
+class TestNewPauseProtocol:
+    async def test_prerelease_60951_uses_new_cmd18_payload(self, hass, mock_linktap_api):
+        conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: "S0609512609181404I"}
+        coordinator = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
+        coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+        coordinator.last_update_success = True
+        mock_linktap_api.pause_tap.return_value = True
+
+        async def _refresh():
+            coordinator.last_update_success = True
+            coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+
+        with patch.object(coordinator, "async_refresh", side_effect=_refresh), patch.object(
+            coordinator, "async_request_refresh", AsyncMock()
+        ):
+            await coordinator.async_set_water_plan_pause(1)
+
+        mock_linktap_api.pause_tap.assert_awaited_once_with(
+            MOCK_GW_ID, MOCK_TAP_ID, 1, new_protocol=True
+        )
+
+    async def test_new_protocol_does_not_fail_on_immediate_stale_state(self, hass, mock_linktap_api):
+        conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: "S0609520000000000I"}
+        coordinator = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
+        coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+        coordinator.last_update_success = True
+        mock_linktap_api.pause_tap.return_value = True
+
+        async def _refresh():
+            coordinator.last_update_success = True
+            coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+
+        request_refresh = AsyncMock()
+        with patch.object(coordinator, "async_refresh", side_effect=_refresh), patch.object(
+            coordinator, "async_request_refresh", request_refresh
+        ):
+            await coordinator.async_set_water_plan_pause(1)
+
+        request_refresh.assert_awaited_once()
