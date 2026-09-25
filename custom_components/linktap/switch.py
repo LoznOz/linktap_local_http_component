@@ -239,7 +239,7 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
         # the active watering process rather than only the legacy Watering Plan.
         # Keep the legacy label on legacy firmware so the UI describes the
         # operation the gateway actually performs.
-        if coordinator._new_pause_protocol:
+        if coordinator.new_pause_protocol:
             self._attr_name = "Pause Watering"
             self._name = f"Pause Watering {tap[NAME]}"
         else:
