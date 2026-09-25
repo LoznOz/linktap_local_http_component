@@ -177,15 +177,15 @@ These are examples only; Home Assistant controls generated entity IDs.
 
 | Binary sensor | Description |
 |---|---|
-| **Is Linked** | Whether the TapLinker is linked to the gateway |
-| **Has a Fall Alert** | Fall alert reported by the device |
-| **Has a Cutoff Alert** | Water-cutoff / failed-shutoff alert |
-| **Is Leaking** | Leak condition reported by the device |
-| **Is Clogged** | Clogged condition reported by the device |
-| **Is Broken** | Other broken/fault condition reported by the device |
-| **Is Manual Mode** | Device has been triggered manually (if device supports this)|
-| **Is Paused** | LinkTap reports the water plan as paused |
-| **Is Watering** | Device is currently watering |
+| **Connected** | Whether the TapLinker is linked to the gateway |
+| **Detected Fall** | Fall alert reported by the device |
+| **Detected Water Cutoff** | Water-cutoff / failed-shutoff alert |
+| **Detected Leak** | Leak condition reported by the device |
+| **Detected Clog** | Clogged condition reported by the device |
+| **Detected Device Fault** | Other broken/fault condition reported by the device |
+| **Manual Watering** | Device has been triggered manually (if device supports this) |
+| **Watering Paused** | LinkTap reports the watering/plan pause state |
+| **Watering** | Device is currently watering |
 
 Since v0.8.0, the fault-oriented entities — fall, cutoff, leaking, clogged and broken — are categorised as Home Assistant **diagnostic** entities. Operational states remain normal device entities.
 
@@ -193,19 +193,19 @@ Since v0.8.0, the fault-oriented entities — fall, cutoff, leaking, clogged and
 
 | Sensor | Description |
 |---|---|
-| **Signal** | Signal strength between the LinkTap device and gateway |
-| **Battery** | Device battery level |
-| **Total Duration** | Current LinkTap watering-job duration, reported in seconds |
-| **Remain Duration** | Remaining duration for the current watering job, in seconds |
-| **Watering Time Total** | Home Assistant-maintained cumulative watering time |
-| **Speed** | Current water flow rate |
-| **Volume** | Water volume reported for the current watering session |
+| **Signal Strength** | Signal strength between the LinkTap device and gateway |
+| **Battery Charge** | Device battery level |
+| **Session Duration** | Current LinkTap watering-session duration, reported in seconds |
+| **Remaining Duration** | Remaining duration for the current watering session, in seconds |
+| **Total Watering Time** | Home Assistant-maintained cumulative watering time |
+| **Flow Rate** | Current water flow rate |
+| **Session Volume** | Water volume reported for the current watering session |
 | **Volume Limit** | Current LinkTap volume limit |
 | **Total Water Volume** | Home Assistant-maintained cumulative water volume |
 | **Failsafe Duration** | LinkTap failsafe duration reported by the gateway, in seconds; currently read-only |
-| **Plan Mode** | Numeric LinkTap watering-plan mode |
-| **Plan Mode String** | Human-readable translation of the plan mode |
-| **Plan SN** | LinkTap watering-plan serial number |
+| **Plan Mode Code** | Numeric LinkTap watering-plan mode |
+| **Plan Mode** | Human-readable translation of the plan mode |
+| **Plan Serial Number** | LinkTap watering-plan serial number |
 
 ### Remaining Duration
 
