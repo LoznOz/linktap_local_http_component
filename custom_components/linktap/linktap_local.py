@@ -121,11 +121,13 @@ class LinktapLocal:
 
     @staticmethod
     def parse_firmware_version(version):
-        """Return the first six numerical firmware characters as an integer."""
-        digits = "".join(char for char in str(version) if char.isdigit())
-        if len(digits) < 6:
+        """Return the six-digit numeric prefix following the firmware marker S."""
+        if not isinstance(version, str):
             return None
-        return int(digits[:6])
+        match = re.match(r"^S(\\d{6})", version.strip())
+        if match is None:
+            return None
+        return int(match.group(1))
 
     async def pause_tap(self, gw_id, dev_id, hours, *, new_protocol=False, option=0):
         data = {"cmd": PAUSE_CMD, "gw_id": gw_id, "dev_id": dev_id, "duration": hours}
