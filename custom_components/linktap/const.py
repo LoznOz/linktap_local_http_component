@@ -35,7 +35,3 @@ NATIVE_MAX_WATERING_VOLUME = 2000
 # CMD 18 pause/resume protocol versioning.
 GW_VERSION = "Gateway Firmware Version"
 NEW_PAUSE_API_MIN_VERSION = 60952  # LinkTap production guidance: parsed version > 60951.
-CMD18_PRERELEASE_TEST_VERSION = 60951
-# Temporary branch-only accommodation for the pre-release firmware supplied by LinkTap.
-# MUST be False before this work is proposed for merge upstream.
-ENABLE_CMD18_PRERELEASE_TESTING = True
