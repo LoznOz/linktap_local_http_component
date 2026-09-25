@@ -220,7 +220,7 @@ class TestPauseProtocolSelection:
         ("version", "expected_new_protocol"),
         [
             ("S0609500000000000I", False),
-            ("S0609512609181404I", True),  # temporary pre-release test build
+            ("S0609512609181404I", False),  # threshold itself remains legacy
             ("S0609520000000000I", True),  # first production version > 60951
             ("S0610000000000000I", True),
             ("invalid", False),
@@ -310,26 +310,6 @@ class TestRepeatedPauseGuard:
 
 
 class TestNewPauseProtocol:
-    async def test_prerelease_60951_uses_new_cmd18_payload(self, hass, mock_linktap_api):
-        conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: "S0609512609181404I"}
-        coordinator = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
-        coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
-        coordinator.last_update_success = True
-        mock_linktap_api.pause_tap.return_value = True
-
-        async def _refresh():
-            coordinator.last_update_success = True
-            coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
-
-        with patch.object(coordinator, "async_refresh", side_effect=_refresh), patch.object(
-            coordinator, "async_request_refresh", AsyncMock()
-        ):
-            await coordinator.async_set_water_plan_pause(1)
-
-        mock_linktap_api.pause_tap.assert_awaited_once_with(
-            MOCK_GW_ID, MOCK_TAP_ID, 1, new_protocol=True
-        )
-
     async def test_new_protocol_does_not_fail_on_immediate_stale_state(self, hass, mock_linktap_api):
         conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: "S0609520000000000I"}
         coordinator = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
