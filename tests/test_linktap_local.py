@@ -289,6 +289,10 @@ class TestCmd18NewProtocol:
         assert linktap.parse_firmware_version("S0609512609181404I") == 60951
         assert linktap.parse_firmware_version("S0609522609181404I") == 60952
         assert linktap.parse_firmware_version("invalid") is None
+        assert linktap.parse_firmware_version(None) is None
+        assert linktap.parse_firmware_version("0609522609181404I") is None
+        assert linktap.parse_firmware_version("S06A09522609181404I") is None
+        assert linktap.parse_firmware_version("prefixS0609522609181404I") is None
 
     async def test_positive_pause_includes_option(self, linktap):
         mock_req = AsyncMock(return_value={"ret": 0})
