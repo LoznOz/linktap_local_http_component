@@ -95,7 +95,16 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
 
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, unit, device_class=False, icon=False):
         super().__init__(coordinator)
-        name = data_attribute.replace("_", " ").title()
+        name = {
+            "signal": "Signal Strength",
+            "total_duration": "Session Duration",
+            "remain_duration": "Remaining Duration",
+            "speed": "Flow Rate",
+            "volume": "Session Volume",
+            "plan_mode": "Plan Mode Code",
+            "plan_sn": "Plan Serial Number",
+            "plan_mode_string": "Plan Mode",
+        }.get(data_attribute, data_attribute.replace("_", " ").title())
         self._state = None
         self.attribute = data_attribute
         self.tap_id = tap[TAP_ID]
@@ -194,7 +203,7 @@ class LinktapVolumeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
     def __init__(self, coordinator, hass, tap, unit):
         super().__init__(coordinator)
         self.tap_id = tap[TAP_ID]
-        self._attr_name = "Volume Total"
+        self._attr_name = "Total Water Volume"
         # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
         self._attr_unique_id = slugify(f"{DOMAIN}_sensor_volume_total_{self.tap_id}")
         self._attr_native_unit_of_measurement = unit
@@ -321,7 +330,7 @@ class LinktapWateringTimeTotalSensor(CoordinatorEntity, RestoreEntity, SensorEnt
     def __init__(self, coordinator, hass, tap):
         super().__init__(coordinator)
         self.tap_id = tap[TAP_ID]
-        self._attr_name = "Watering Time Total"
+        self._attr_name = "Total Watering Time"
         # IMPORTANT: keep unique_id formula unchanged for registry/history stability.
         self._attr_unique_id = slugify(f"{DOMAIN}_sensor_watering_time_total_{self.tap_id}")
         self._attr_native_unit_of_measurement = "s"
