@@ -191,12 +191,11 @@ class LinktapCoordinator(DataUpdateCoordinator):
         return data
 
     async def async_set_water_plan_pause(self, hours):
-        """Safely set or clear this tap's watering-plan pause.
+        """Safely set or clear this tap's firmware-aware CMD18 pause.
 
-        LinkTap issue #88 is destructive: a second positive cmd 18 while the
-        watering plan is already paused can deactivate the plan, even though
-        the gateway returns ret=0. Refresh immediately before the decision and
-        refuse repeated positive pause requests rather than risking plan loss.
+        Older firmware can deactivate a watering plan after a repeated positive
+        CMD18 request. Refresh immediately before the decision and retain that
+        guard for both protocol paths so legacy gateways remain protected.
         """
         hours = int(hours)
         pause_label = "watering" if self._new_pause_protocol else "water plan"
@@ -218,12 +217,19 @@ class LinktapCoordinator(DataUpdateCoordinator):
             is_paused = bool((self.data or {}).get("is_paused", False))
 
             if hours > 0 and is_paused:
-                _LOGGER.warning(
-                    "Refusing repeated water plan pause for LinkTap %s: "
-                    "the plan is already paused and another positive pause "
-                    "request can deactivate the watering plan",
-                    self.tap_id,
-                )
+                if self._new_pause_protocol:
+                    _LOGGER.warning(
+                        "Refusing repeated watering pause for LinkTap %s: "
+                        "watering is already paused",
+                        self.tap_id,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Refusing repeated water plan pause for LinkTap %s: "
+                        "the plan is already paused and another positive pause "
+                        "request can deactivate the watering plan",
+                        self.tap_id,
+                    )
                 raise HomeAssistantError(
                     f"{pause_label.capitalize()} is already paused. LinkTap cannot safely replace "
                     "an active pause using the local API; the existing pause has "
@@ -232,7 +238,8 @@ class LinktapCoordinator(DataUpdateCoordinator):
 
             if hours == 0 and not is_paused:
                 _LOGGER.debug(
-                    "Water plan for LinkTap %s is already unpaused; no command sent",
+                    "%s for LinkTap %s is already unpaused; no command sent",
+                    pause_label.capitalize(),
                     self.tap_id,
                 )
                 return
