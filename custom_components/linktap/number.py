@@ -82,7 +82,7 @@ class LinktapNumber(CoordinatorEntity, RestoreNumber):
         self.tap_id = tap[TAP_ID]
         self.platform = "number"
         self._attr_unique_id = slugify(
-            f"{DOMAIN}_{self.platform}_{self.tap_id}_{number_suffix.replace(' ', '_')}"
+            f"{DOMAIN}_{self.platform}_{self.tap_id}_{number_suffix.lower().replace(' ', '_')}"
         )
         self._attr_name = number_suffix
         self._attr_native_min_value = 0
