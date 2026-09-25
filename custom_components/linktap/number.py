@@ -44,13 +44,13 @@ async def async_setup_entry(hass, config, async_add_entities, discovery_info=Non
         limits = _safety_limits(config, tap[TAP_ID])
         numbers.append(
             LinktapNumber(
-                coordinator, hass, tap, "Watering duration", "mdi:clock", "m",
+                coordinator, hass, tap, "Watering Duration", "mdi:clock", "m",
                 safety_max=limits.get(CONF_MAX_WATERING_DURATION),
             )
         )
         numbers.append(
             LinktapNumber(
-                coordinator, hass, tap, "Watering volume", "mdi:water",
+                coordinator, hass, tap, "Watering Volume", "mdi:water",
                 hass.data[DOMAIN][config.entry_id]["conf"]["vol_unit"],
                 safety_max=limits.get(CONF_MAX_WATERING_VOLUME),
             )
@@ -89,7 +89,7 @@ class LinktapNumber(CoordinatorEntity, RestoreNumber):
         self._attr_native_max_value = NATIVE_MAX_WATERING_DURATION
         self._attr_native_step = 5
 
-        if number_suffix == "Watering volume":
+        if number_suffix == "Watering Volume":
             self._attr_native_max_value = NATIVE_MAX_WATERING_VOLUME
             self._attr_native_step = 10
 
@@ -125,7 +125,7 @@ class LinktapNumber(CoordinatorEntity, RestoreNumber):
             self._attr_native_value = restored
         else:
             _LOGGER.debug("No value found to restore -- setting default")
-            default_value = DEFAULT_VOL if self.number_suffix == "Watering volume" else DEFAULT_TIME
+            default_value = DEFAULT_VOL if self.number_suffix == "Watering Volume" else DEFAULT_TIME
             self._attr_native_value = min(default_value, self._attr_native_max_value)
         self.async_write_ha_state()
 
