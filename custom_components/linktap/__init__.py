@@ -199,8 +199,11 @@ class LinktapCoordinator(DataUpdateCoordinator):
         refuse repeated positive pause requests rather than risking plan loss.
         """
         hours = int(hours)
+        pause_label = "watering" if self._new_pause_protocol else "water plan"
         if hours < 0:
-            raise HomeAssistantError("Water plan pause duration cannot be negative")
+            raise HomeAssistantError(
+                f"{pause_label.capitalize()} pause duration cannot be negative"
+            )
 
         async with self._pause_lock:
             # Bypass the coordinator refresh debouncer: the safety decision must
@@ -208,7 +211,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
             await self.async_refresh()
             if not self.last_update_success:
                 raise HomeAssistantError(
-                    "Unable to verify the current LinkTap water plan pause state; "
+                    f"Unable to verify the current LinkTap {pause_label} pause state; "
                     "no pause command was sent."
                 )
 
@@ -222,7 +225,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
                     self.tap_id,
                 )
                 raise HomeAssistantError(
-                    "Water plan is already paused. LinkTap cannot safely replace "
+                    f"{pause_label.capitalize()} is already paused. LinkTap cannot safely replace "
                     "an active pause using the local API; the existing pause has "
                     "been left unchanged."
                 )
@@ -243,7 +246,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
             )
             if not success:
                 raise HomeAssistantError(
-                    f"LinkTap gateway rejected water plan pause request for {self.tap_id}"
+                    f"LinkTap gateway rejected {pause_label} pause request for {self.tap_id}"
                 )
 
             if self._new_pause_protocol:
@@ -257,7 +260,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
             await self.async_refresh()
             if not self.last_update_success:
                 raise HomeAssistantError(
-                    "LinkTap gateway accepted the water plan pause request, but "
+                    f"LinkTap gateway accepted the {pause_label} pause request, but "
                     "Home Assistant could not verify the resulting gateway state."
                 )
 
@@ -267,7 +270,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
                 action = "pause" if expected_paused else "unpause"
                 raise HomeAssistantError(
                     f"LinkTap gateway accepted the {action} request but did not "
-                    "report the expected water plan pause state"
+                    f"report the expected {pause_label} pause state"
                 )
 
     #def get_vol_unit(self):
