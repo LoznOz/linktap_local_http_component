@@ -97,6 +97,7 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         name = {
             "signal": "Signal Strength",
+            "battery": "Battery Charge",
             "total_duration": "Session Duration",
             "remain_duration": "Remaining Duration",
             "speed": "Flow Rate",
