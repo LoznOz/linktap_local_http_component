@@ -18,7 +18,7 @@ ATTR_VOL = "Watering by Volume"
 ATTR_DURATION = "Watering Duration"
 ATTR_VOLUME = "Watering Volume"
 ATTR_STATE = "is_watering"
-MANUFACTURER = "Linktap"
+MANUFACTURER = "LinkTap"
 
 # Optional per-device Home Assistant safety ceilings for instant watering.
 # These do not alter LinkTap's own limits; they constrain requests made by
