@@ -215,6 +215,100 @@ class TestRawVolumeValidation:
         assert coordinator.tap_api.fetch_data.await_count == 2
 
 
+class TestPauseProtocolSelection:
+    @pytest.mark.parametrize(
+        ("version", "expected_new_protocol"),
+        [
+            ("S0609500000000000I", False),
+            ("S0609512609181404I", True),  # temporary pre-release test build
+            ("S0609520000000000I", True),  # first production version > 60951
+            ("S0610000000000000I", True),
+            ("invalid", False),
+            (None, False),
+        ],
+    )
+    async def test_firmware_version_selects_cmd18_protocol(
+        self, hass, mock_linktap_api, version, expected_new_protocol
+    ):
+        """Select legacy/new CMD18 strictly from the parsed gateway firmware."""
+        conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: version}
+        coordinator = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
+        coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+        coordinator.last_update_success = True
+        mock_linktap_api.pause_tap.return_value = True
+
+        async def _refresh():
+            coordinator.last_update_success = True
+            coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+
+        with patch.object(coordinator, "async_refresh", side_effect=_refresh), patch.object(
+            coordinator, "async_request_refresh", AsyncMock()
+        ):
+            if expected_new_protocol:
+                await coordinator.async_set_water_plan_pause(1)
+            else:
+                # Legacy path verifies the post-command paused state, so provide
+                # the settled state on its second synchronous refresh.
+                refresh_count = [0]
+
+                async def _legacy_refresh():
+                    refresh_count[0] += 1
+                    coordinator.last_update_success = True
+                    coordinator.data = {
+                        **MOCK_TAP_STATUS,
+                        "is_paused": refresh_count[0] >= 2,
+                    }
+
+                with patch.object(
+                    coordinator, "async_refresh", side_effect=_legacy_refresh
+                ):
+                    await coordinator.async_set_water_plan_pause(1)
+
+        mock_linktap_api.pause_tap.assert_awaited_once_with(
+            MOCK_GW_ID,
+            MOCK_TAP_ID,
+            1,
+            new_protocol=expected_new_protocol,
+        )
+
+
+class TestRepeatedPauseGuard:
+    async def test_second_positive_pause_is_blocked_before_cmd18(
+        self, hass, mock_linktap_api
+    ):
+        """A repeated positive pause must never send a second CMD18 request."""
+        conf = {
+            GW_IP: MOCK_GW_IP,
+            GW_ID: MOCK_GW_ID,
+            GW_VERSION: "S0609520000000000I",
+        }
+        coordinator = LinktapCoordinator(hass, mock_linktap_api, conf, MOCK_TAP_ID)
+        coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+        coordinator.last_update_success = True
+        mock_linktap_api.pause_tap.return_value = True
+
+        refresh_count = [0]
+
+        async def _refresh():
+            refresh_count[0] += 1
+            coordinator.last_update_success = True
+            coordinator.data = {
+                **MOCK_TAP_STATUS,
+                "is_paused": refresh_count[0] >= 2,
+            }
+
+        with patch.object(coordinator, "async_refresh", side_effect=_refresh), patch.object(
+            coordinator, "async_request_refresh", AsyncMock()
+        ):
+            await coordinator.async_set_water_plan_pause(1)
+            with pytest.raises(HomeAssistantError, match="already paused"):
+                await coordinator.async_set_water_plan_pause(1)
+
+        mock_linktap_api.pause_tap.assert_awaited_once_with(
+            MOCK_GW_ID, MOCK_TAP_ID, 1, new_protocol=True
+        )
+
+
 class TestNewPauseProtocol:
     async def test_prerelease_60951_uses_new_cmd18_payload(self, hass, mock_linktap_api):
         conf = {GW_IP: MOCK_GW_IP, GW_ID: MOCK_GW_ID, GW_VERSION: "S0609512609181404I"}
