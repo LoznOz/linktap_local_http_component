@@ -60,7 +60,7 @@ async def async_setup_entry(hass, config, async_add_entities, discovery_info=Non
                 coordinator,
                 hass,
                 tap,
-                "Pause Duration" if coordinator._new_pause_protocol else "Pause Duration Water Plan",
+                "Pause Duration" if coordinator.new_pause_protocol else "Pause Duration Water Plan",
                 "mdi:timer-pause",
                 "h",
             )
