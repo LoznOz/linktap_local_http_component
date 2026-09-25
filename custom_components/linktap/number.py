@@ -57,8 +57,12 @@ async def async_setup_entry(hass, config, async_add_entities, discovery_info=Non
         )
         numbers.append(
             LinktapPauseDurationNumber(
-                coordinator, hass, tap, "Pause Duration Water Plan",
-                "mdi:timer-pause", "h"
+                coordinator,
+                hass,
+                tap,
+                "Pause Duration" if coordinator._new_pause_protocol else "Pause Duration Water Plan",
+                "mdi:timer-pause",
+                "h",
             )
         )
     async_add_entities(numbers, True)
