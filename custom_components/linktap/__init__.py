@@ -25,9 +25,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from tenacity import RetryError
 
 from .const import (
-    CMD18_PRERELEASE_TEST_VERSION,
     DOMAIN,
-    ENABLE_CMD18_PRERELEASE_TESTING,
     GW_ID,
     GW_IP,
     GW_VERSION,
@@ -153,13 +151,7 @@ class LinktapCoordinator(DataUpdateCoordinator):
         parsed_version = LinktapLocal.parse_firmware_version(conf.get(GW_VERSION))
         self._new_pause_protocol = bool(
             parsed_version is not None
-            and (
-                parsed_version >= NEW_PAUSE_API_MIN_VERSION
-                or (
-                    ENABLE_CMD18_PRERELEASE_TESTING
-                    and parsed_version == CMD18_PRERELEASE_TEST_VERSION
-                )
-            )
+            and parsed_version >= NEW_PAUSE_API_MIN_VERSION
         )
         # Serialize all water-plan pause mutations for this tap. Without a lock,
         # two HA callers could both observe an unpaused state and both send cmd 18.
