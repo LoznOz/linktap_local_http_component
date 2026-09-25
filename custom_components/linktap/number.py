@@ -81,8 +81,12 @@ class LinktapNumber(CoordinatorEntity, RestoreNumber):
         self._id = self._name
         self.tap_id = tap[TAP_ID]
         self.platform = "number"
+        unique_id_suffix = {
+            "Watering Duration": "Watering_duration",
+            "Watering Volume": "Watering_volume",
+        }.get(number_suffix, number_suffix.replace(" ", "_"))
         self._attr_unique_id = slugify(
-            f"{DOMAIN}_{self.platform}_{self.tap_id}_{number_suffix.lower().replace(' ', '_')}"
+            f"{DOMAIN}_{self.platform}_{self.tap_id}_{unique_id_suffix}"
         )
         self._attr_name = number_suffix
         self._attr_native_min_value = 0
