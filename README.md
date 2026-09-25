@@ -2,7 +2,7 @@
 
 A custom Home Assistant integration for LinkTap TapLinkers and ValveLinkers using the LinkTap gateway's **local HTTP API**.
 
-The integration provides local control and monitoring of LinkTap devices, including LinkTap-style **Instant Watering**, device status, water/flow sensors, cumulative watering totals, water-plan pause controls, alerts, and optional Home Assistant-side watering safety limits.
+The integration provides local control and monitoring of LinkTap devices, including LinkTap-style **Instant Watering**, device status, water/flow sensors, cumulative watering totals, firmware-aware watering pause controls, alerts, and optional Home Assistant-side watering safety limits.
 
 > [!IMPORTANT]
 > The LinkTap gateway's **Local HTTP API must be enabled** and the gateway must be reachable directly from Home Assistant on the local network.
@@ -201,21 +201,21 @@ Since v0.8.0, the fault-oriented entities — fall, cutoff, leaking, clogged and
 | **Speed** | Current water flow rate |
 | **Volume** | Water volume reported for the current watering session |
 | **Volume Limit** | Current LinkTap volume limit |
-| **Volume Total** | Home Assistant-maintained cumulative water volume |
+| **Total Water Volume** | Home Assistant-maintained cumulative water volume |
 | **Failsafe Duration** | LinkTap failsafe duration reported by the gateway, in seconds; currently read-only |
 | **Plan Mode** | Numeric LinkTap watering-plan mode |
 | **Plan Mode String** | Human-readable translation of the plan mode |
 | **Plan SN** | LinkTap watering-plan serial number |
 
-### Remain Duration
+### Remaining Duration
 
-Since v0.8.0, **Remain Duration** is normalised to `0` when watering has stopped.
+Since v0.8.0, **Remaining Duration** is normalised to `0` when watering has stopped.
 
 Some LinkTap responses retain a stale final non-zero remaining-duration value after watering ends. The integration therefore reports the gateway value while watering or paused, and `0` otherwise.
 
 ## Water flow and Home Assistant statistics
 
-Since **v0.8.0**, the **Speed** sensor exposes Home Assistant's proper `volume_flow_rate` device class and `measurement` state class, using canonical units:
+Since **v0.8.0**, the **Flow Rate** sensor exposes Home Assistant's proper `volume_flow_rate` device class and `measurement` state class, using canonical units:
 
 - `L/min`
 - `gal/min`
@@ -228,9 +228,9 @@ This now allows the sensor to participate correctly in Home Assistant statistics
 
 `Volume` is the LinkTap gateway's raw/current-session water-volume value and is expected to reset when a new watering session begins.
 
-### Volume Total
+### Total Water Volume
 
-`Volume Total` is maintained by this Home Assistant integration because the local API does not provide the same cumulative total directly.
+`Total Water Volume` is maintained by this Home Assistant integration because the local API does not provide the same cumulative total directly.
 
 It is:
 
@@ -244,7 +244,7 @@ The integration compensates for the gateway retaining the previous session's raw
 
 ### Protection against corrupt raw volume readings
 
-Since **v0.8.1**, `Volume Total` includes defensive protection against persistent corruption from grossly implausible raw volume samples.
+Since **v0.8.1**, `Total Water Volume` includes defensive protection against persistent corruption from grossly implausible raw volume samples.
 
 Before a raw sample can affect the persistent accumulator, the integration rejects:
 
@@ -259,9 +259,9 @@ Rejected values are **dropped rather than clamped**, so they do not replace the 
 
 This is a defensive Home Assistant safeguard. It does **not** claim to fix the underlying LinkTap telemetry source if the gateway/firmware/API itself emits a bad value.
 
-### Watering Time Total
+### Total Watering Time
 
-`Watering Time Total` is maintained by Home Assistant, persists across restarts, reports cumulative watering time in seconds and uses `state_class: total_increasing`.
+`Total Watering Time` is maintained by Home Assistant, persists across restarts, reports cumulative watering time in seconds and uses `state_class: total_increasing`.
 
 ## Number entities
 
@@ -381,15 +381,15 @@ Enter only the gateway's IPv4 address, for example:
 
 Do not include a URL scheme, hostname, port or API path.
 
-### Volume Total looks incorrect
+### Total Water Volume looks incorrect
 
 Compare:
 
 - the raw LinkTap `Volume` for the completed session;
-- the increase in `Volume Total`;
+- the increase in `Total Water Volume`;
 - the LinkTap app/cloud value separately.
 
-`Volume Total` accumulates the volume reported by the **local API**. The LinkTap app/cloud may present a different value, beyond the scope of this integration.
+`Total Water Volume` accumulates the volume reported by the **local API**. The LinkTap app/cloud may present a different value, beyond the scope of this integration.
 
 Current releases also contain restart double-count protection and protection against grossly implausible raw-volume spikes.
 
@@ -418,7 +418,7 @@ This is intentional. A second positive LinkTap water-plan pause request has been
 
 ### v0.8.1
 
-- Protect persistent `Volume Total` from grossly implausible raw-volume spikes.
+- Protect persistent `Total Water Volume` from grossly implausible raw-volume spikes.
 - Reject invalid/non-finite/negative samples before they can affect the accumulator.
 - Preserve restart double-count protection.
 
@@ -445,7 +445,7 @@ When reporting an issue, please include:
 - raw/current entity values involved;
 - clear reproduction steps.
 
-For volume-related issues, include both the raw session `Volume` and the change in `Volume Total`.
+For volume-related issues, include both the raw `Session Volume` and the change in `Total Water Volume`.
 
 ---
 
