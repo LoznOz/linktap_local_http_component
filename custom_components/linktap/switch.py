@@ -232,11 +232,19 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
 
 class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
     _attr_has_entity_name = True
-    _attr_name = "Pause Water Plan"
 
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
-        self._name = f"Pause Water Plan {tap[NAME]}"
+        # CMD18 changed semantics in newer gateway firmware: it pauses/resumes
+        # the active watering process rather than only the legacy Watering Plan.
+        # Keep the legacy label on legacy firmware so the UI describes the
+        # operation the gateway actually performs.
+        if coordinator._new_pause_protocol:
+            self._attr_name = "Pause Watering"
+            self._name = f"Pause Watering {tap[NAME]}"
+        else:
+            self._attr_name = "Pause Water Plan"
+            self._name = f"Pause Water Plan {tap[NAME]}"
         self.tap_name = tap[NAME]
         self.tap_id = tap[TAP_ID]
         self.platform = "switch"
