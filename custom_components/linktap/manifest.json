@@ -1,6 +1,6 @@
 {
     "domain": "linktap",
-    "name": "Local HTTP API for Linktap",
+    "name": "Local HTTP API for LinkTap",
     "codeowners": ["@sh00t2kill"],
     "config_flow": true,
     "dependencies": [],
