@@ -157,6 +157,11 @@ class LinktapCoordinator(DataUpdateCoordinator):
         # two HA callers could both observe an unpaused state and both send cmd 18.
         self._pause_lock = asyncio.Lock()
 
+    @property
+    def new_pause_protocol(self):
+        """Return whether this gateway uses the new CMD18 pause protocol."""
+        return self._new_pause_protocol
+
     def get_gw_id(self):
         return self.conf[GW_ID]
 
