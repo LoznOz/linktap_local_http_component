@@ -8,7 +8,7 @@ dismiss_alert:
       domain: binary_sensor
 
 dismiss_alerts:
-  name: Dismiss Alerts
+  name: Dismiss alerts
   description: Dismiss all alerts
   target:
     entity:
@@ -17,7 +17,7 @@ dismiss_alerts:
 
 pause:
   name: Pause
-  description: Pause the watering schedule
+  description: Pause watering for the specified duration
   fields:
     hours:
       name: Hours
@@ -30,7 +30,7 @@ pause:
 
 pause_valve:
   name: Pause
-  description: Pause the watering schedule
+  description: Pause watering for the specified duration
   fields:
     hours:
       name: Hours
@@ -42,13 +42,13 @@ pause_valve:
       domain: valve
 
 start_watering:
-  name: Start Watering for X seconds
-  description: Turn on a valve for a set time
+  name: Start watering
+  description: Start watering for the specified duration
   fields:
     seconds:
-      name: Seconds
+      name: Duration
       example: 900
-      description: Duration in seconds
+      description: Watering duration in seconds
   target:
     entity:
       integration: linktap
