@@ -109,35 +109,44 @@ When configured, the selected maximum:
 > [!CAUTION]
 > The `valve.start_watering` entity service accepts its own duration in seconds and currently sends that request directly to the LinkTap API. It does not use the Watering Duration / Watering Volume number helpers, so do not assume the optional helper safety ceilings apply to that service call.
 
-## Water-plan pause controls
+## Pause controls
 
-LinkTap's pause function pauses the **Watering Plan**. It is not a conventional pause/resume control for a watering session that is currently running.
+The LinkTap CMD 18 pause/resume behaviour depends on gateway firmware. The integration reads the gateway firmware version reported by CMD 16 and selects the compatible behaviour automatically.
 
-The relevant entities are:
+For gateways using the newer CMD 18 protocol, Home Assistant exposes:
+
+- **Pause Watering**
+- **Pause Duration**
+
+A positive pause request pauses the active watering process/schedule for the configured number of hours. A resume request uses CMD 18 with `duration: 0`. The integration deliberately omits the CMD 18 `option` field when resuming; pre-release gateway testing showed that `duration: 0` with `option: 1` could return success without restarting watering, while omitting `option` resumed correctly.
+
+For older gateway firmware, the existing behaviour and terminology are retained:
 
 - **Pause Water Plan**
 - **Pause Duration Water Plan**
 
-### Pause Duration Water Plan
+The legacy CMD 18 path pauses/unpauses the watering plan rather than using the newer watering-process semantics.
+
+### Pause duration
 
 - Unit: **hours**
 - Default: **24 hours**
 - Range: **1–240 hours**
 - Step: **1 hour**
 
-Turning **Pause Water Plan** on pauses the LinkTap watering plan for the configured number of hours.
+The newer CMD 18 protocol supports additional pause semantics through its `option` field. The integration currently uses the default option for positive pause requests and does not expose an option selector in Home Assistant.
 
-Turning it off sends an unpause request.
+### Firmware compatibility
+
+The production implementation enables the newer CMD 18 behaviour only when the parsed firmware version is greater than `60951`. The exact LinkTap firmware-version parsing convention and threshold are being confirmed with LinkTap before release; the integration falls back to legacy behaviour when the version cannot be parsed safely.
 
 ### Repeated-pause protection
 
-Since **v0.8.2**, the integration protects against a LinkTap local-API behaviour where sending another positive pause request while a plan is already paused can deactivate the underlying watering plan even though the gateway reports a successful response.
+The integration retains its repeated-positive-pause guard for both firmware paths. Before sending a positive pause request, it refreshes gateway state and rejects the request when `is_paused` is already true. This preserves backward compatibility with older firmware where a repeated positive CMD 18 request has been observed to deactivate the underlying watering plan.
 
-Before sending a positive pause request, the integration refreshes gateway state and rejects another positive pause when `is_paused` is already true. Unpause while already unpaused is treated as an idempotent no-op.
+Newer firmware tested during development safely rejected a repeated positive pause itself, but the Home Assistant-side guard remains so a second CMD 18 is not deliberately sent.
 
-Because no documented safe LinkTap local-API operation is currently known for replacing or extending an already-active pause, the integration deliberately **does not change the expiry time of an existing pause**.
-
-If you need a different pause duration, unpause first and then apply a new pause.
+Unpause/resume while already unpaused is treated as an idempotent no-op. To apply a different pause duration while a pause is active, resume/unpause first and then apply a new pause.
 
 ## Entity naming and renaming
 
@@ -260,7 +269,7 @@ This is a defensive Home Assistant safeguard. It does **not** claim to fix the u
 |---|---:|---:|---|---|
 | **Watering Duration** | 15 | 0–120 | min | Requested instant-watering duration |
 | **Watering Volume** | 0 | 0–2000 | L or Gal | Optional volume cutoff; `0` disables it |
-| **Pause Duration Water Plan** | 24 | 1–240 | h | Duration used when pausing the water plan |
+| **Pause Duration** / **Pause Duration Water Plan** | 24 | 1–240 | h | Firmware-aware pause duration |
 
 Optional per-device safety limits reduce the effective maximum of Watering Duration and/or Watering Volume.
 
@@ -277,7 +286,7 @@ Since v0.8.0, the valve resolves its backing switch through the Entity Registry 
 
 ## Entity services
 
-### `switch.pause`
+### `linktap.pause`
 
 Pause or unpause a LinkTap watering plan through a LinkTap switch entity.
 
@@ -286,7 +295,7 @@ Pause or unpause a LinkTap watering plan through a LinkTap switch entity.
 | `entity_id` | yes | LinkTap switch entity |
 | `hours` | no | Pause duration in hours; default `1`; `0` unpauses |
 
-### `valve.pause_valve`
+### `linktap.pause_valve`
 
 Pause or unpause through a LinkTap valve entity.
 
