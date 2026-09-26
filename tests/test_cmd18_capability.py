@@ -115,3 +115,21 @@ async def test_resume_can_include_option_for_enhanced_firmware(linktap):
     payload = request.await_args.args[0]
     assert payload["duration"] == 0
     assert payload["option"] == 1
+
+
+async def test_cmd18_returns_complete_gateway_response(linktap):
+    response = {"ret": 10, "detail": "state conflict"}
+    request = AsyncMock(return_value=response)
+    with patch.object(linktap, "_request", request):
+        result = await linktap.cmd18(MOCK_GW_ID, MOCK_TAP_ID, 0.1, option=1)
+
+    assert result == response
+    request.assert_awaited_once_with(
+        {
+            "cmd": PAUSE_CMD,
+            "gw_id": MOCK_GW_ID,
+            "dev_id": MOCK_TAP_ID,
+            "duration": 0.1,
+            "option": 1,
+        }
+    )
