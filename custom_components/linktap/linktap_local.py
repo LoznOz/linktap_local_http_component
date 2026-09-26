@@ -23,6 +23,31 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+ENHANCED_CMD18_MIN_VERSION = 60951
+
+
+def parse_gateway_firmware_version(version):
+    """Return the six-digit LinkTap firmware number, or None if invalid.
+
+    LinkTap defines the capability version as the six characters immediately
+    following the gateway-generation prefix (for example S060951... -> 60951).
+    """
+    if not isinstance(version, str) or len(version) < 7:
+        return None
+    numeric_version = version[1:7]
+    if not numeric_version.isdigit():
+        return None
+    return int(numeric_version)
+
+
+def supports_enhanced_cmd18(version):
+    """Return whether a gateway firmware supports enhanced CMD18 semantics."""
+    numeric_version = parse_gateway_firmware_version(version)
+    return (
+        numeric_version is not None
+        and numeric_version >= ENHANCED_CMD18_MIN_VERSION
+    )
+
 
 class LinktapLocal:
 
@@ -74,8 +99,6 @@ class LinktapLocal:
                     """Fallback to html wrapped"""
                     response = json.loads(self.clean_response(await resp.text()))
 
-        # Every now and then, a request will throw a 404.
-        # Ive never seen it fail twice, so lets try it again.
         if status == 404:
             _LOGGER.debug("Got a 404 issue: Wait and try again")
             raise JSONDecodeError("404 Not Found", "", 0)
@@ -119,8 +142,16 @@ class LinktapLocal:
         status = await self._request(data)
         return status["ret"] == 0
 
-    async def pause_tap(self, gw_id, dev_id, hours):
-        data = {"cmd": PAUSE_CMD, "gw_id": gw_id, "dev_id": dev_id, "duration": hours}
+    async def pause_tap(self, gw_id, dev_id, hours, option=None):
+        """Send CMD18, optionally including the enhanced-firmware option field."""
+        data = {
+            "cmd": PAUSE_CMD,
+            "gw_id": gw_id,
+            "dev_id": dev_id,
+            "duration": hours,
+        }
+        if option is not None:
+            data["option"] = option
         _LOGGER.debug(f"Pause Payload: {data}")
         status = await self._request(data)
         _LOGGER.debug(f"Pause Response: {status}")
@@ -131,8 +162,6 @@ class LinktapLocal:
         status = await self._request(data)
         return status
 
-    ## Config helper functions: If multiples of these are going to be used,
-    ## it would make sense to use the config function above and use the output
     async def get_vol_unit(self, gw_id):
         config = await self.get_gw_config(gw_id)
         return config["vol_unit"]
@@ -148,22 +177,10 @@ class LinktapLocal:
             "names": config["dev_name"],
         }
 
-    """This is potentially a little hacky, as it actually sends a malformatted request to the gateway.
-    The ID of the gateway is returned in this malformed request, so lets use it for good and not evil."""
-
     async def get_gw_id(self):
         data = {"cmd": STATUS_CMD}
         status = await self._request(data)
         return status["gw_id"]
-
-    """alert: type of alert
-    0: all types of alert.
-    1: device fall alert.
-    2: valve shut-down failure alert.
-    3: water cut-off alert.
-    4: unusually high flow alert.
-    5: unusually low flow alert.
-    """
 
     async def dismiss_alert(self, gw_id, dev_id, alert_id=False):
         if not alert_id:
