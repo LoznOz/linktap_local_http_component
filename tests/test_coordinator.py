@@ -154,8 +154,58 @@ class TestAsyncSetWaterPlanPause:
                 coordinator.last_update_success = False
 
         with patch.object(coordinator, "async_refresh", side_effect=_refresh):
-            with pytest.raises(HomeAssistantError, match="could not verify"):
+            with pytest.raises(HomeAssistantError, match="did not report"):
                 await coordinator.async_set_water_plan_pause(1)
+
+    async def test_enhanced_firmware_waits_for_pause_state_convergence(
+        self, coordinator
+    ):
+        """Enhanced firmware may report the old CMD3 state for a heartbeat cycle."""
+        coordinator.tap_api.enhanced_cmd18 = True
+        coordinator.tap_api.pause_tap.return_value = True
+        refresh_count = [0]
+
+        async def _refresh():
+            refresh_count[0] += 1
+            coordinator.last_update_success = True
+            # Pre-command state and first two post-command polls are still old.
+            paused = refresh_count[0] >= 4
+            coordinator.data = {**MOCK_TAP_STATUS, "is_paused": paused}
+
+        with (
+            patch.object(coordinator, "async_refresh", side_effect=_refresh),
+            patch("asyncio.sleep", AsyncMock()) as sleep_mock,
+        ):
+            await coordinator.async_set_water_plan_pause(1)
+
+        coordinator.tap_api.pause_tap.assert_called_once_with(
+            MOCK_GW_ID, MOCK_TAP_ID, 1
+        )
+        assert refresh_count[0] == 4
+        assert sleep_mock.await_count == 2
+
+    async def test_legacy_firmware_does_not_wait_for_state_convergence(
+        self, coordinator
+    ):
+        """Legacy/unknown firmware keeps the original single-refresh behaviour."""
+        coordinator.tap_api.enhanced_cmd18 = False
+        coordinator.tap_api.pause_tap.return_value = True
+        refresh_count = [0]
+
+        async def _refresh():
+            refresh_count[0] += 1
+            coordinator.last_update_success = True
+            coordinator.data = {**MOCK_TAP_STATUS, "is_paused": False}
+
+        with (
+            patch.object(coordinator, "async_refresh", side_effect=_refresh),
+            patch("asyncio.sleep", AsyncMock()) as sleep_mock,
+        ):
+            with pytest.raises(HomeAssistantError, match="did not report"):
+                await coordinator.async_set_water_plan_pause(1)
+
+        assert refresh_count[0] == 2
+        sleep_mock.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
