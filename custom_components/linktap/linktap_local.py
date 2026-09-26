@@ -55,7 +55,9 @@ class LinktapLocal:
     gw_id = False
 
     def __init__(self):
-        # Do nothing
+        # Keep capability unknown/legacy-safe until CMD16 config is read.
+        self.gateway_version = None
+        self.enhanced_cmd18 = False
         print("Hello, its me!")
 
     def set_ip(self, ip):
@@ -160,6 +162,16 @@ class LinktapLocal:
     async def get_gw_config(self, gw_id):
         data = {"cmd": CONFIG_CMD, "gw_id": gw_id}
         status = await self._request(data)
+        # async_setup_entry already reads CMD16 once at startup. Cache the
+        # capability on this shared API object so every tap coordinator can use
+        # the same gateway-level result without another HTTP request.
+        self.gateway_version = status.get("ver")
+        self.enhanced_cmd18 = supports_enhanced_cmd18(self.gateway_version)
+        _LOGGER.debug(
+            "LinkTap gateway firmware %r enhanced CMD18 support: %s",
+            self.gateway_version,
+            self.enhanced_cmd18,
+        )
         return status
 
     async def get_vol_unit(self, gw_id):
