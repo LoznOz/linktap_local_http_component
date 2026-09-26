@@ -30,6 +30,8 @@ from .linktap_local import LinktapLocal
 _LOGGER = logging.getLogger(__name__)
 
 MAX_PLAUSIBLE_SESSION_VOLUME = 10_000.0
+ENHANCED_CMD18_VERIFY_TIMEOUT = 30
+ENHANCED_CMD18_VERIFY_INTERVAL = 3
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
@@ -170,6 +172,30 @@ class LinktapCoordinator(DataUpdateCoordinator):
 
         return data
 
+    async def _async_verify_pause_state(self, expected_paused):
+        """Verify CMD18 state, allowing enhanced firmware heartbeat latency."""
+        if not getattr(self.tap_api, "enhanced_cmd18", False):
+            await self.async_refresh()
+            if not self.last_update_success:
+                return False
+            return bool((self.data or {}).get("is_paused", False)) == expected_paused
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + ENHANCED_CMD18_VERIFY_TIMEOUT
+
+        while True:
+            await self.async_refresh()
+            if self.last_update_success:
+                actual_paused = bool((self.data or {}).get("is_paused", False))
+                if actual_paused == expected_paused:
+                    return True
+
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return False
+
+            await asyncio.sleep(min(ENHANCED_CMD18_VERIFY_INTERVAL, remaining))
+
     async def async_set_water_plan_pause(self, hours):
         """Safely set or clear this tap's watering-plan pause.
 
@@ -221,16 +247,9 @@ class LinktapCoordinator(DataUpdateCoordinator):
                     f"LinkTap gateway rejected water plan pause request for {self.tap_id}"
                 )
 
-            await self.async_refresh()
-            if not self.last_update_success:
-                raise HomeAssistantError(
-                    "LinkTap gateway accepted the water plan pause request, but "
-                    "Home Assistant could not verify the resulting gateway state."
-                )
-
             expected_paused = hours > 0
-            actual_paused = bool((self.data or {}).get("is_paused", False))
-            if actual_paused != expected_paused:
+            verified = await self._async_verify_pause_state(expected_paused)
+            if not verified:
                 action = "pause" if expected_paused else "unpause"
                 raise HomeAssistantError(
                     f"LinkTap gateway accepted the {action} request but did not "

@@ -33,6 +33,13 @@ _LOGGER = logging.getLogger(__name__)
 
 from .const import ATTR_STATE, DOMAIN, GW_IP, MANUFACTURER, NAME, TAP_ID
 
+ENHANCED_PAUSE_MIN_HOURS = 0.01
+ENHANCED_PAUSE_MAX_HOURS = 240.0
+PAUSE_MODE_OPTIONS = {
+    "keep_end_time": 0,
+    "complete_duration": 1,
+}
+
 
 def _switch_entity_id(hass, tap_id):
     """Resolve the LinkTap switch by stable unique ID, not generated entity ID."""
@@ -63,6 +70,22 @@ async def async_setup_entry(
         {vol.Required("seconds", default=9000): vol.Coerce(int)},
         "_start_watering"
         )
+    platform.async_register_entity_service(
+        "pause_current_watering",
+        {
+            vol.Required("hours", default=1): vol.All(
+                vol.Coerce(float),
+                vol.Range(min=ENHANCED_PAUSE_MIN_HOURS, max=ENHANCED_PAUSE_MAX_HOURS),
+            ),
+            vol.Required("mode", default="keep_end_time"): vol.In(PAUSE_MODE_OPTIONS),
+        },
+        "_pause_current_watering",
+    )
+    platform.async_register_entity_service(
+        "resume_current_watering",
+        {},
+        "_resume_current_watering",
+    )
 
 
 class LinktapValve(CoordinatorEntity, ValveEntity):
@@ -177,6 +200,79 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
             hours = 1
         _LOGGER.debug(f"Pausing {self.entity_id} for {hours} hours")
         await self.coordinator.async_set_water_plan_pause(hours)
+
+    def _require_enhanced_cmd18(self):
+        if not getattr(self.coordinator.tap_api, "enhanced_cmd18", False):
+            raise HomeAssistantError(
+                "This LinkTap gateway firmware does not support pausing current watering"
+            )
+
+    async def _pause_current_watering(self, hours=1, mode="keep_end_time"):
+        """Pause an active watering process using enhanced CMD18."""
+        self._require_enhanced_cmd18()
+        hours = float(hours)
+        if not ENHANCED_PAUSE_MIN_HOURS <= hours <= ENHANCED_PAUSE_MAX_HOURS:
+            raise HomeAssistantError("Pause duration must be between 0.01 and 240 hours")
+        if mode not in PAUSE_MODE_OPTIONS:
+            raise HomeAssistantError(f"Unknown LinkTap pause mode: {mode}")
+
+        async with self.coordinator._pause_lock:
+            await self.coordinator.async_refresh()
+            if not self.coordinator.last_update_success:
+                raise HomeAssistantError(
+                    "Unable to verify the current LinkTap watering state; no pause command was sent."
+                )
+            status = self.coordinator.data or {}
+            if status.get("is_paused", False):
+                raise HomeAssistantError("Current watering is already paused")
+            if not status.get("is_watering", False):
+                raise HomeAssistantError("LinkTap is not currently watering")
+
+            gw_id = self.coordinator.get_gw_id()
+            response = await self.coordinator.tap_api.cmd18(
+                gw_id,
+                self.tap_id,
+                hours,
+                option=PAUSE_MODE_OPTIONS[mode],
+            )
+            ret = response.get("ret")
+            if ret == 10:
+                raise HomeAssistantError(
+                    "LinkTap cannot pause this watering process because less than 15 seconds remain"
+                )
+            if ret != 0:
+                raise HomeAssistantError(
+                    f"LinkTap gateway rejected the current-watering pause request (ret={ret})"
+                )
+            if not await self.coordinator._async_verify_pause_state(True):
+                raise HomeAssistantError(
+                    "LinkTap accepted the pause request but did not report the expected paused state"
+                )
+
+    async def _resume_current_watering(self):
+        """Resume a watering process paused with enhanced CMD18."""
+        self._require_enhanced_cmd18()
+        async with self.coordinator._pause_lock:
+            await self.coordinator.async_refresh()
+            if not self.coordinator.last_update_success:
+                raise HomeAssistantError(
+                    "Unable to verify the current LinkTap watering state; no resume command was sent."
+                )
+            status = self.coordinator.data or {}
+            if not status.get("is_paused", False):
+                raise HomeAssistantError("Current watering is not paused")
+
+            gw_id = self.coordinator.get_gw_id()
+            response = await self.coordinator.tap_api.cmd18(gw_id, self.tap_id, 0)
+            ret = response.get("ret")
+            if ret != 0:
+                raise HomeAssistantError(
+                    f"LinkTap gateway rejected the current-watering resume request (ret={ret})"
+                )
+            if not await self.coordinator._async_verify_pause_state(False):
+                raise HomeAssistantError(
+                    "LinkTap accepted the resume request but did not report the expected resumed state"
+                )
 
     async def _start_watering(self, seconds=False):
         if not seconds or seconds == 0:
