@@ -52,6 +52,26 @@ def linktap():
     return client
 
 
+async def test_cmd16_caches_enhanced_capability(linktap):
+    config = {"ret": 0, "ver": "S0609512609181404I"}
+    with patch.object(linktap, "_request", AsyncMock(return_value=config)):
+        result = await linktap.get_gw_config(MOCK_GW_ID)
+
+    assert result == config
+    assert linktap.gateway_version == "S0609512609181404I"
+    assert linktap.enhanced_cmd18 is True
+
+
+@pytest.mark.parametrize("version", ["S0609502609181404I", "4.38", None])
+async def test_cmd16_defaults_old_or_unknown_firmware_to_legacy(linktap, version):
+    config = {"ret": 0, "ver": version}
+    with patch.object(linktap, "_request", AsyncMock(return_value=config)):
+        await linktap.get_gw_config(MOCK_GW_ID)
+
+    assert linktap.gateway_version == version
+    assert linktap.enhanced_cmd18 is False
+
+
 async def test_legacy_pause_payload_omits_option(linktap):
     request = AsyncMock(return_value={"ret": 0})
     with patch.object(linktap, "_request", request):
