@@ -92,9 +92,7 @@ async def test_legacy_pause_payload_omits_option(linktap):
 async def test_enhanced_pause_payload_includes_option(linktap, option):
     request = AsyncMock(return_value={"ret": 0})
     with patch.object(linktap, "_request", request):
-        result = await linktap.pause_tap(
-            MOCK_GW_ID, MOCK_TAP_ID, 0.1, option=option
-        )
+        result = await linktap.pause_tap(MOCK_GW_ID, MOCK_TAP_ID, 0.1, option=option)
 
     assert result is True
     request.assert_awaited_once_with(
@@ -111,9 +109,7 @@ async def test_enhanced_pause_payload_includes_option(linktap, option):
 async def test_resume_can_include_option_for_enhanced_firmware(linktap):
     request = AsyncMock(return_value={"ret": 0})
     with patch.object(linktap, "_request", request):
-        result = await linktap.pause_tap(
-            MOCK_GW_ID, MOCK_TAP_ID, 0, option=1
-        )
+        result = await linktap.pause_tap(MOCK_GW_ID, MOCK_TAP_ID, 0, option=1)
 
     assert result is True
     payload = request.await_args.args[0]
