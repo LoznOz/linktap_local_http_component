@@ -144,8 +144,8 @@ class LinktapLocal:
         status = await self._request(data)
         return status["ret"] == 0
 
-    async def pause_tap(self, gw_id, dev_id, hours, option=None):
-        """Send CMD18, optionally including the enhanced-firmware option field."""
+    async def cmd18(self, gw_id, dev_id, hours, option=None):
+        """Send CMD18 and return the complete gateway response."""
         data = {
             "cmd": PAUSE_CMD,
             "gw_id": gw_id,
@@ -157,6 +157,11 @@ class LinktapLocal:
         _LOGGER.debug(f"Pause Payload: {data}")
         status = await self._request(data)
         _LOGGER.debug(f"Pause Response: {status}")
+        return status
+
+    async def pause_tap(self, gw_id, dev_id, hours, option=None):
+        """Send CMD18 while preserving the existing boolean API contract."""
+        status = await self.cmd18(gw_id, dev_id, hours, option=option)
         return status["ret"] == 0
 
     async def get_gw_config(self, gw_id):
